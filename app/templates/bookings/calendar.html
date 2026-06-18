@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Calendário - ReadyRoom{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Agendamento de salas</h4>
+    <div class="d-flex align-items-center gap-2">
+        <label for="roomFilter" class="form-label mb-0">Sala:</label>
+        <select id="roomFilter" class="form-select form-select-sm" style="width: auto;">
+            <option value="">Todas as salas</option>
+            {% for room in rooms %}
+            <option value="{{ room.id }}" {% if selected_room_id == room.id %}selected{% endif %}>{{ room.name }} ({{ room.capacity }} lugares)</option>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+
+<div id="calendar"></div>
+
+<div class="modal fade" id="bookingModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="bookingModalTitle">Nova reserva</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="bookingModalError" class="alert alert-danger d-none"></div>
+                <form id="bookingForm">
+                    <div class="mb-3">
+                        <label class="form-label">Sala</label>
+                        <select id="bookingRoom" class="form-select" required>
+                            {% for room in rooms %}
+                            <option value="{{ room.id }}">{{ room.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Título</label>
+                        <input type="text" id="bookingTitle" class="form-control" required>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col">
+                            <label class="form-label">Início</label>
+                            <input type="datetime-local" id="bookingStart" class="form-control" required>
+                        </div>
+                        <div class="col">
+                            <label class="form-label">Fim</label>
+                            <input type="datetime-local" id="bookingEnd" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descrição / participantes</label>
+                        <textarea id="bookingDescription" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div id="bookingMeta" class="text-muted small d-none mb-2"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="bookingCancelBtn" class="btn btn-outline-danger d-none">Cancelar reserva</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                <button type="button" id="bookingSaveBtn" class="btn btn-primary">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<script>
+    window.READYROOM_ROOMS = {{ rooms_json | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/calendar.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+instance/
+.pytest_cache/
+*.sqlite3
+.venv/
+venv/
+
+.claude/
+shedule_task.lock
+settings.local.json

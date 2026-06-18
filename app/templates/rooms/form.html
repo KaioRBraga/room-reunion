@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ "Editar sala" if room else "Nova sala" }} - ReadyRoom{% endblock %}
+{% block content %}
+<h4 class="mb-3">{{ "Editar sala" if room else "Nova sala" }}</h4>
+<form method="post" class="col-md-6">
+    {{ form.hidden_tag() }}
+    <div class="mb-3">
+        {{ form.name.label(class="form-label") }}
+        {{ form.name(class="form-control") }}
+    </div>
+    <div class="mb-3">
+        {{ form.capacity.label(class="form-label") }}
+        {{ form.capacity(class="form-control") }}
+    </div>
+    <div class="mb-3">
+        {{ form.location.label(class="form-label") }}
+        {{ form.location(class="form-control") }}
+    </div>
+    <div class="mb-3">
+        {{ form.equipment_notes.label(class="form-label") }}
+        {{ form.equipment_notes(class="form-control", rows=3) }}
+    </div>
+    <div class="form-check mb-3">
+        {{ form.is_active(class="form-check-input") }}
+        {{ form.is_active.label(class="form-check-label") }}
+    </div>
+    <button type="submit" class="btn btn-primary">Salvar</button>
+    <a href="{{ url_for('rooms.list_rooms') }}" class="btn btn-secondary">Cancelar</a>
+</form>
+
+{% if room %}
+<hr class="col-md-6">
+<h5>Painel da sala (app Android)</h5>
+<p class="text-muted small">
+    Token usado pelo tablet/painel desta sala para se conectar à API sem precisar de login AD.
+    Cole esse valor na tela de configuração do app.
+</p>
+{% if room.display_token %}
+<div class="input-group col-md-6 mb-3">
+    <input type="text" class="form-control" value="{{ room.display_token }}" readonly onclick="this.select()">
+</div>
+{% else %}
+<p class="text-muted col-md-6">Nenhum token gerado ainda para esta sala.</p>
+{% endif %}
+<form method="post" action="{{ url_for('rooms.regenerate_display_token', room_id=room.id) }}" onsubmit="return confirm('Gerar um novo token invalida o atual - o painel já configurado vai parar de funcionar até você atualizar o token nele. Continuar?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-outline-secondary btn-sm">{{ "Renovar token" if room.display_token else "Gerar token" }}</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,84 @@
+#calendar {
+    background-color: #fff;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 0 0.5rem rgba(0, 0, 0, 0.08);
+}
+
+#mapWrap {
+    overflow: hidden;
+}
+
+.room-pin {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background-color: #0d6efd;
+    border: 2px solid #fff;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    z-index: 2;
+
+    transition: all 0.2s ease;
+    
+    position: absolute;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.room-pin .room-pin-label {
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
+    text-align: center;
+    line-height: 1.2;
+    padding: 2px;
+}
+
+.room-pin.occupied,
+.room-pin.occupied.room-pin { /* Dupla classe para mais especificidade */
+    background-color: #dc3545 !important;
+    border-color: #dc3545 !important;
+    box-shadow: 0 0 15px rgba(220, 53, 69, 0.5) !important;
+}
+
+
+.room-pin.available,
+.room-pin.available.room-pin {
+    background-color: #28a745 !important;
+    border-color: #28a745 !important;
+    box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important;
+}
+.room-pin:hover {
+    background-color: #0b5ed7;
+}
+
+.room-pin-label {
+    position: absolute;
+    top: 130%;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    font-size: 0.7rem;
+    padding: 1px 5px;
+    border-radius: 3px;
+    pointer-events: none;
+}
+
+.palette-pin {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.4rem 1rem;
+    border-radius: 999px;
+    background-color: #198754;
+    color: #fff;
+    cursor: grab;
+    user-select: none;
+}

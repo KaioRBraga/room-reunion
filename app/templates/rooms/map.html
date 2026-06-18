@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Salas - ReadyRoom{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Mapa de salas</h4>
+    {% if current_user.is_admin %}
+    <div id="newRoomPin" class="palette-pin" draggable="true" title="Arraste para o mapa para cadastrar uma sala">+ Sala</div>
+    {% endif %}
+</div>
+
+{% if current_user.is_admin %}
+<form id="mapUploadForm" action="{{ url_for('rooms.upload_map') }}" method="post" enctype="multipart/form-data" class="d-flex align-items-center gap-2 mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="map_file" accept=".pdf,.jpg,.jpeg,.png" class="form-control form-control-sm" style="max-width: 320px;" required>
+    <button type="submit" class="btn btn-sm btn-outline-primary">Enviar mapa (PDF/JPG/PNG)</button>
+</form>
+{% endif %}
+
+<div id="mapWrap" class="position-relative border rounded bg-white">
+    {% if floor_map %}
+    <img id="floorMapImg" src="{{ url_for('rooms.map_image') }}" class="w-100 d-block" draggable="false" alt="Planta baixa">
+    {% for room in pinned_rooms %}
+    <div class="room-pin {{ 'occupied' if room.is_occupied_now() else 'available' }}" data-room-id="{{ room.id }}" draggable="{{ 'true' if current_user.is_admin else 'false' }}"
+         style="left: {{ room.pos_x * 100 }}%; top: {{ room.pos_y * 100 }}%;">
+        <span class="room-pin-label">{{ room.name }}</span>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p class="text-muted text-center p-5 mb-0">
+        Nenhum mapa cadastrado ainda.
+        {% if not current_user.is_admin %}Peça a um administrador para enviar a planta baixa.{% endif %}
+    </p>
+    {% endif %}
+</div>
+
+<div class="modal fade" id="roomPinModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="roomPinModalTitle">Nova sala</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="roomPinError" class="alert alert-danger d-none"></div>
+                <span id="roomPinStatus" class="badge mb-3 d-none"></span>
+                <form id="roomPinForm">
+                    <div class="mb-3">
+                        <label class="form-label">Nome</label>
+                        <input type="text" id="roomPinName" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Capacidade (pessoas)</label>
+                        <input type="number" id="roomPinCapacity" class="form-control" min="1" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Equipamentos e o que a sala oferece</label>
+                        <textarea id="roomPinEquipment" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Disponibilidade</label>
+                        <textarea id="roomPinAvailability" class="form-control" rows="2" placeholder="Ex: Disponível em horário comercial"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="roomPinUnpinBtn" class="btn btn-outline-danger d-none">Remover do mapa</button>
+                <button type="button" id="roomPinBookBtn" class="btn btn-outline-primary d-none">Reservar</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                <button type="button" id="roomPinSaveBtn" class="btn btn-primary">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="reserveModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="reserveModalTitle">Reservar sala</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="reserveError" class="alert alert-danger d-none"></div>
+                <p class="text-muted small mb-2">Clique ou arraste no calendário para escolher o horário.</p>
+                <div id="reserveCalendar" class="mb-3"></div>
+                <div id="reserveFormWrap" class="d-none border-top pt-3">
+                    <p class="mb-2"><strong>Horário selecionado:</strong> <span id="reserveRangeLabel"></span></p>
+                    <div class="mb-2">
+                        <label class="form-label">Título</label>
+                        <input type="text" id="reserveTitle" class="form-control" required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Descrição / participantes</label>
+                        <textarea id="reserveDescription" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" id="reserveConfirmBtn" class="btn btn-primary btn-sm">Confirmar reserva</button>
+                        <button type="button" id="reserveCancelSelectionBtn" class="btn btn-outline-secondary btn-sm">Cancelar seleção</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<script src="{{ url_for('static', filename='js/room_map.js') }}"></script>
+{% endblock %}
