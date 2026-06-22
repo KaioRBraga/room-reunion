@@ -9,6 +9,7 @@ class DayTimeline extends StatelessWidget {
   final int startHour;
   final int endHour;
   final double pixelsPerMinute;
+  final void Function(DateTime start, DateTime end)? onSlotTap;
 
   const DayTimeline({
     super.key,
@@ -17,6 +18,7 @@ class DayTimeline extends StatelessWidget {
     this.startHour = 7,
     this.endHour = 21,
     this.pixelsPerMinute = 1.4,
+    this.onSlotTap,
   });
 
   double _minutesFromStart(DateTime t) {
@@ -25,13 +27,40 @@ class DayTimeline extends StatelessWidget {
     return minutes.clamp(0, (endHour - startHour) * 60).toDouble();
   }
 
+  bool _isSlotFree(DateTime start, DateTime end) {
+    return !events.any((e) => e.start.isBefore(end) && e.end.isAfter(start));
+  }
+
+  void _handleTap(BuildContext context, Offset localPosition) {
+    final dayStart = DateTime(now.year, now.month, now.day, startHour);
+    final tappedMinutes =
+        (localPosition.dy / pixelsPerMinute).clamp(0, (endHour - startHour) * 60).toDouble();
+    final roundedMinutes = (tappedMinutes / 30).round() * 30;
+    var slotStart = dayStart.add(Duration(minutes: roundedMinutes));
+
+    if (slotStart.isBefore(now)) {
+      final nowMinutes = now.difference(dayStart).inMinutes;
+      final nextSlotMinutes = (nowMinutes / 30).ceil() * 30;
+      slotStart = dayStart.add(Duration(minutes: nextSlotMinutes));
+    }
+    final slotEnd = slotStart.add(const Duration(minutes: 30));
+
+    if (!_isSlotFree(slotStart, slotEnd)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Horário ocupado - escolha outro.')),
+      );
+      return;
+    }
+    onSlotTap!(slotStart, slotEnd);
+  }
+
   @override
   Widget build(BuildContext context) {
     final totalHeight = (endHour - startHour) * 60 * pixelsPerMinute;
     final timeFormat = DateFormat('HH:mm');
     final showNowLine = now.hour >= startHour && now.hour <= endHour;
 
-    return SizedBox(
+    final stack = SizedBox(
       width: double.infinity,
       height: totalHeight + 20,
       child: Stack(
@@ -111,6 +140,13 @@ class DayTimeline extends StatelessWidget {
             ),
         ],
       ),
+    );
+
+    if (onSlotTap == null) return stack;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapUp: (details) => _handleTap(context, details.localPosition),
+      child: stack,
     );
   }
 }

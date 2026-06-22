@@ -65,6 +65,16 @@ def test_check_in_makes_it_in_use(app, room):
     assert payload["current_meeting"]["checked_in"] is True
 
 
+def test_check_in_before_start_makes_it_in_use_immediately(app, room):
+    """Check-in antecipado inicia a reunião no painel sem esperar o horário marcado."""
+    booking = create_booking(room.id, "Briefing", "jsilva", "João Silva", _dt(4), _dt(34))
+    check_in_booking(booking)
+    payload = get_display_status(room)
+    assert payload["status"] == "in_use"
+    assert payload["current_meeting"]["title"] == "Briefing"
+    assert payload["current_meeting"]["checked_in"] is True
+
+
 def test_no_show_expires_after_grace_and_frees_room(app, room):
     create_booking(room.id, "Briefing", "jsilva", "João Silva", _dt(-7), _dt(23))
     payload = get_display_status(room)

@@ -3,7 +3,18 @@ from datetime import datetime, timedelta
 from flask import current_app
 
 from app.extensions import db
-from app.models import Booking, Room, localnow
+from app.models import Booking, BookingAttendee, Room, localnow
+
+
+def _dedupe_emails(emails):
+    seen = set()
+    result = []
+    for email in emails or []:
+        email = (email or "").strip().lower()
+        if email and email not in seen:
+            seen.add(email)
+            result.append(email)
+    return result
 
 
 class BookingValidationError(Exception):
@@ -21,6 +32,10 @@ class BookingConflictError(Exception):
         )
 
 
+class BookingPermissionError(Exception):
+    """Usuário não pertence a nenhum grupo AD autorizado a reservar esta sala."""
+
+
 def create_booking(
     room_id,
     title,
@@ -29,13 +44,40 @@ def create_booking(
     start_at,
     end_at,
     description=None,
+    organizer_is_admin=False,
+    organizer_group_cns=None,
+    attendees_count=1,
+    virtual_room_url=None,
+    skip_permission_check=False,
+    attendee_emails=None,
 ):
     if end_at <= start_at:
         raise BookingValidationError("O horário de término deve ser após o início.")
 
+    if virtual_room_url and not virtual_room_url.lower().startswith(("http://", "https://")):
+        raise BookingValidationError("A URL da sala virtual deve começar com http:// ou https://.")
+
     room = db.session.get(Room, room_id)
     if room is None or not room.is_active:
         raise BookingValidationError("Sala inválida ou inativa.")
+
+    if not skip_permission_check and not room.is_bookable_by(
+        organizer_group_cns, is_admin=organizer_is_admin
+    ):
+        raise BookingPermissionError(
+            f"Você não tem permissão para reservar a sala '{room.name}'."
+        )
+
+    if room.min_attendees and attendees_count < room.min_attendees:
+        raise BookingValidationError(
+            f"Esta sala exige no mínimo {room.min_attendees} participantes."
+        )
+
+    if not room.is_within_business_hours(start_at, end_at):
+        raise BookingValidationError(
+            f"Esta sala só pode ser reservada entre "
+            f"{room.business_hours_start:%H:%M} e {room.business_hours_end:%H:%M}."
+        )
 
     conflicting = Booking.find_conflict(room_id, start_at, end_at)
     if conflicting is not None:
@@ -49,8 +91,15 @@ def create_booking(
         start_at=start_at,
         end_at=end_at,
         description=description,
+        attendees_count=attendees_count,
+        virtual_room_url=virtual_room_url,
     )
     db.session.add(booking)
+    db.session.flush()
+
+    for email in _dedupe_emails(attendee_emails):
+        db.session.add(BookingAttendee(booking_id=booking.id, email=email))
+
     db.session.commit()
     return booking
 
@@ -121,6 +170,7 @@ def _booking_summary(booking, now):
         "end": booking.end_at.isoformat(),
         "checked_in": booking.checked_in_at is not None,
         "is_past": booking.end_at <= now,
+        "virtual_room_url": booking.virtual_room_url or "",
     }
 
 
@@ -151,7 +201,13 @@ def resolve_display_state(room):
         next_booking = room.next_booking(active.end_at)
     else:
         upcoming = room.next_booking(now)
-        if upcoming is not None and upcoming.start_at - now <= headsup:
+        if upcoming is not None and upcoming.checked_in_at is not None:
+            # Check-in antecipado: reunião já foi iniciada manualmente antes
+            # do horário marcado (start_at não é alterado - ver checked_in_at).
+            status = "in_use"
+            headline = upcoming
+            next_booking = room.next_booking(upcoming.start_at)
+        elif upcoming is not None and upcoming.start_at - now <= headsup:
             status = "starting_soon"
             check_in_deadline = upcoming.start_at + grace
             headline = upcoming

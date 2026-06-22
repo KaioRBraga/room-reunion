@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Lixeira - ReadyRoom{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Lixeira</h4>
+    <a href="{{ url_for('rooms.map_view') }}" class="btn btn-outline-secondary btn-sm">Voltar para o mapa</a>
+</div>
+<p class="text-muted">
+    Salas desativadas. Apagar permanentemente remove a sala e todo o histórico de
+    reservas dela - essa ação não pode ser desfeita.
+</p>
+
+<table class="table table-striped align-middle">
+    <thead>
+        <tr>
+            <th>Nome</th>
+            <th>Capacidade</th>
+            <th>Localização</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for room in rooms %}
+        <tr>
+            <td>{{ room.name }}</td>
+            <td>{{ room.capacity }}</td>
+            <td>{{ room.location or "-" }}</td>
+            <td class="text-end">
+                <form action="{{ url_for('rooms.permanently_delete_room', room_id=room.id) }}" method="post" class="d-inline"
+                      onsubmit="return confirm('Apagar esta sala permanentemente? Essa ação não pode ser desfeita.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Apagar permanentemente</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-center text-muted">A lixeira está vazia.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

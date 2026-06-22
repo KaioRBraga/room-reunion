@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Relatórios - ReadyRoom{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Relatório de reservas</h4>
+</div>
+
+<div class="d-flex flex-wrap align-items-end gap-2 mb-4">
+    <div>
+        <label for="reportPeriod" class="form-label mb-1 small">Período</label>
+        <select id="reportPeriod" class="form-select form-select-sm">
+            <option value="week">Esta semana</option>
+            <option value="month" selected>Este mês</option>
+            <option value="custom">Personalizado</option>
+        </select>
+    </div>
+    <div id="reportCustomRange" class="d-none d-flex gap-2">
+        <div>
+            <label for="reportStart" class="form-label mb-1 small">De</label>
+            <input type="date" id="reportStart" class="form-control form-control-sm">
+        </div>
+        <div>
+            <label for="reportEnd" class="form-label mb-1 small">Até</label>
+            <input type="date" id="reportEnd" class="form-control form-control-sm">
+        </div>
+    </div>
+    <div>
+        <label for="reportRoom" class="form-label mb-1 small">Sala</label>
+        <select id="reportRoom" class="form-select form-select-sm">
+            <option value="">Todas as salas</option>
+            {% for room in rooms %}
+            <option value="{{ room.id }}">{{ room.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+
+<div id="reportError" class="alert alert-danger d-none"></div>
+
+<div class="row g-3 mb-4" id="reportSummaryCards"></div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title">Reservas por sala</h6>
+                <canvas id="chartByRoom" height="220"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title">Reservas por organizador</h6>
+                <canvas id="chartByOrganizer" height="220"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title">Ocupação por sala</h6>
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Sala</th>
+                            <th>Reservas</th>
+                            <th>Horas ocupadas</th>
+                            <th>Ocupação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reportRoomTable"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title">Reuniões começaram mais cedo (check-in antecipado)</h6>
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Sala</th>
+                            <th>Reunião</th>
+                            <th>Agendado</th>
+                            <th>Começou</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reportEarlyStartedTable"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/reports.js') }}"></script>
+{% endblock %}

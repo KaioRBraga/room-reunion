@@ -4,9 +4,11 @@ from tracemalloc import start
 from flask import abort, jsonify, render_template, request
 from flask_login import current_user, login_required
 
+from app.auth.services import search_users
 from app.bookings import bookings_bp
 from app.bookings.services import (
     BookingConflictError,
+    BookingPermissionError,
     BookingValidationError,
     cancel_booking,
     create_booking,
@@ -42,7 +44,10 @@ def _parse_calendar_dt(value):
 def _booking_to_event(booking):
     can_cancel = current_user.is_admin or current_user.username == booking.organizer_username
     is_ended = booking.end_at < localnow()
-    title = f"{booking.title} - Encerrada" if is_ended else booking.title
+    organizer = booking.organizer_display_name or booking.organizer_username
+    title = f"{organizer} - {booking.title}"
+    if is_ended:
+        title += " (Encerrada)"
     return {
         "id": booking.id,
         "title": title,
@@ -52,8 +57,12 @@ def _booking_to_event(booking):
         "extendedProps": {
             "room_id": booking.room_id,
             "room_name": booking.room.name,
+            "raw_title": booking.title,
             "organizer": booking.organizer_display_name or booking.organizer_username,
             "description": booking.description or "",
+            "attendees_count": booking.attendees_count,
+            "virtual_room_url": booking.virtual_room_url or "",
+            "attendee_emails": [a.email for a in booking.attendees],
             "can_cancel": can_cancel and not is_ended,
             "is_ended": is_ended,
         },
@@ -65,7 +74,12 @@ def _booking_to_event(booking):
 def calendar_view():
     rooms = Room.query.filter_by(is_active=True).order_by(Room.name).all()
     rooms_json = [
-        {"id": room.id, "name": room.name, "color": _room_color(room.id)}
+        {
+            "id": room.id,
+            "name": room.name,
+            "color": _room_color(room.id),
+            "min_attendees": room.min_attendees,
+        }
         for room in rooms
     ]
     selected_room_id = request.args.get("room_id", type=int)
@@ -106,11 +120,18 @@ def api_create_booking():
     start_at = _parse_calendar_dt(data.get("start"))
     end_at = _parse_calendar_dt(data.get("end"))
     description = (data.get("description") or "").strip() or None
+    virtual_room_url = (data.get("virtual_room_url") or "").strip() or None
+    attendee_emails = [e for e in (data.get("attendee_emails") or []) if isinstance(e, str)]
 
     if not room_id or not title or not start_at or not end_at:
         return jsonify({"error": "Sala, título, início e fim são obrigatórios."}), 400
-    
-    
+
+    try:
+        attendees_count = int(data.get("attendees_count") or 1)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Número de participantes inválido."}), 400
+    if attendees_count < 1:
+        return jsonify({"error": "Número de participantes deve ser maior que zero."}), 400
 
     try:
         booking = create_booking(
@@ -121,13 +142,27 @@ def api_create_booking():
             start_at=start_at,
             end_at=end_at,
             description=description,
+            organizer_is_admin=current_user.is_admin,
+            organizer_group_cns=current_user.group_cns,
+            attendees_count=attendees_count,
+            virtual_room_url=virtual_room_url,
+            attendee_emails=attendee_emails,
         )
     except BookingConflictError as exc:
         return jsonify({"error": str(exc)}), 409
+    except BookingPermissionError as exc:
+        return jsonify({"error": str(exc)}), 403
     except BookingValidationError as exc:
         return jsonify({"error": str(exc)}), 400
 
     return jsonify(_booking_to_event(booking)), 201
+
+
+@bookings_bp.route("/api/people")
+@login_required
+def api_people_search():
+    query = request.args.get("q", "")
+    return jsonify(search_users(query))
 
 
 @bookings_bp.route("/api/bookings/<int:booking_id>")

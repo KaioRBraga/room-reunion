@@ -1,5 +1,5 @@
 #calendar {
-    background-color: #fff;
+    background-color:#fff;
     padding: 1rem;
     border-radius: 0.5rem;
     box-shadow: 0 0 0.5rem rgba(0, 0, 0, 0.08);
@@ -40,7 +40,7 @@
 }
 
 .room-pin.occupied,
-.room-pin.occupied.room-pin { /* Dupla classe para mais especificidade */
+.room-pin.occupied.room-pin {
     background-color: #dc3545 !important;
     border-color: #dc3545 !important;
     box-shadow: 0 0 15px rgba(220, 53, 69, 0.5) !important;

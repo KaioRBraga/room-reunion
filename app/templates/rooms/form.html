@@ -17,8 +17,36 @@
         {{ form.location(class="form-control") }}
     </div>
     <div class="mb-3">
-        {{ form.equipment_notes.label(class="form-label") }}
-        {{ form.equipment_notes(class="form-control", rows=3) }}
+        {{ form.equipment_checklist.label(class="form-label d-block") }}
+        <div class="row">
+            {% for subfield in form.equipment_checklist %}
+            <div class="col-6 col-md-4 form-check">
+                {{ subfield(class="form-check-input") }}
+                {{ subfield.label(class="form-check-label") }}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="mb-3">
+        {{ form.equipment_other.label(class="form-label") }}
+        {{ form.equipment_other(class="form-control", placeholder="Ex: Apple TV, Lousa interativa") }}
+    </div>
+    <div class="mb-3">
+        {{ form.min_attendees.label(class="form-label") }}
+        {{ form.min_attendees(class="form-select") }}
+    </div>
+    <div class="row mb-3">
+        <div class="col">
+            {{ form.business_hours_start.label(class="form-label") }}
+            {{ form.business_hours_start(class="form-select") }}
+        </div>
+        <div class="col">
+            {{ form.business_hours_end.label(class="form-label") }}
+            {{ form.business_hours_end(class="form-select") }}
+            {% for error in form.business_hours_end.errors %}
+            <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+        </div>
     </div>
     <div class="form-check mb-3">
         {{ form.is_active(class="form-check-input") }}
@@ -30,10 +58,18 @@
 
 {% if room %}
 <hr class="col-md-6">
+<h5>Permissão de agendamento</h5>
+<p class="text-muted small">
+    Por padrão, qualquer usuário logado pode reservar esta sala.
+    <a href="{{ url_for('rooms.room_permissions', room_id=room.id) }}">Gerenciar grupos do AD com permissão para agendar esta sala &rarr;</a>
+</p>
+
+<hr class="col-md-6">
 <h5>Painel da sala (app Android)</h5>
 <p class="text-muted small">
     Token usado pelo tablet/painel desta sala para se conectar à API sem precisar de login AD.
-    Cole esse valor na tela de configuração do app.
+    Cole esse valor na tela de configuração do app, ou veja o QR code de pareamento na aba
+    <a href="{{ url_for('rooms.devices') }}">Dispositivos</a>.
 </p>
 {% if room.display_token %}
 <div class="input-group col-md-6 mb-3">

@@ -6,6 +6,7 @@ class MeetingSummary {
   final DateTime end;
   final bool checkedIn;
   final bool isPast;
+  final String? virtualRoomUrl;
 
   MeetingSummary({
     required this.id,
@@ -15,9 +16,11 @@ class MeetingSummary {
     required this.end,
     required this.checkedIn,
     required this.isPast,
+    this.virtualRoomUrl,
   });
 
   factory MeetingSummary.fromJson(Map<String, dynamic> json) {
+    final virtualRoomUrl = json['virtual_room_url'] as String?;
     return MeetingSummary(
       id: json['id'] as int,
       title: json['title'] as String,
@@ -26,6 +29,7 @@ class MeetingSummary {
       end: DateTime.parse(json['end'] as String),
       checkedIn: json['checked_in'] as bool? ?? false,
       isPast: json['is_past'] as bool? ?? false,
+      virtualRoomUrl: (virtualRoomUrl != null && virtualRoomUrl.isNotEmpty) ? virtualRoomUrl : null,
     );
   }
 }
@@ -59,8 +63,10 @@ class RoomInfo {
     final list = <String>['$capacity pessoas'];
     final notes = equipmentNotes;
     if (notes != null && notes.trim().isNotEmpty) {
+      // Salas cadastradas antes do checklist podem ter o texto separado por
+      // quebra de linha em vez de vírgula (era um textarea) - aceita os dois.
       list.addAll(
-        notes.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty),
+        notes.split(RegExp(r'[,\n]')).map((e) => e.trim()).where((e) => e.isNotEmpty),
       );
     }
     return list;

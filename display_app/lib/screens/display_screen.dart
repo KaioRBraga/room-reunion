@@ -6,6 +6,7 @@ import '../models/display_status.dart';
 import '../services/api_client.dart';
 import '../services/device_config.dart';
 import '../widgets/display_body.dart';
+import '../widgets/pin_booking_sheet.dart';
 
 class DisplayScreen extends StatefulWidget {
   final DeviceConfig config;
@@ -80,6 +81,39 @@ class _DisplayScreenState extends State<DisplayScreen> {
     }
   }
 
+  void _onSlotTap(DateTime start, DateTime end) {
+    showPinBookingSheet(
+      context: context,
+      start: start,
+      end: end,
+      onSubmit: ({
+        required String username,
+        required String pin,
+        required String title,
+        required int attendeesCount,
+        String? virtualRoomUrl,
+      }) async {
+        final status = await _client.book(
+          username: username,
+          pin: pin,
+          title: title,
+          start: start,
+          end: end,
+          attendeesCount: attendeesCount,
+          virtualRoomUrl: virtualRoomUrl,
+        );
+        if (!mounted) return;
+        setState(() {
+          _status = status;
+          _error = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reserva criada com sucesso!')),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final status = _status;
@@ -125,6 +159,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
             successMessage: 'Reunião estendida em 15 minutos.',
           ),
           onStartNow: () => _runAction(_client.startNow, successMessage: 'Reserva criada.'),
+          onSlotTap: _onSlotTap,
         ),
       ),
     );

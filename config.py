@@ -26,7 +26,28 @@ class Config:
         if g.strip()
     ]
 
+    # Conta de serviço (somente leitura) usada para consultas ao AD fora do
+    # fluxo de login - ex: listar grupos na aba de admin de salas, ou checar
+    # permissão de um colaborador que está agendando pelo PIN do tablet (sem
+    # sessão web). Sem isso configurado, a listagem de grupos fica indisponível.
+    LDAP_SERVICE_USER = os.environ.get("LDAP_SERVICE_USER", "")
+    LDAP_SERVICE_PASSWORD = os.environ.get("LDAP_SERVICE_PASSWORD", "")
+
+    # Prefixos do cn dos grupos a listar na aba de permissão de salas,
+    # separados por vírgula (ex: "g_,INT-" para grupos da organização e
+    # grupos "de internet" por área, sem trazer os ~400 grupos nativos do
+    # Windows que também existem no AD). Vazio = lista todos os grupos do AD.
+    AD_GROUP_PREFIXES = [
+        p.strip() for p in os.environ.get("AD_GROUP_PREFIXES", "g_,INT-").split(",") if p.strip()
+    ]
+
     MAX_CONTENT_LENGTH = int(os.environ.get("MAX_UPLOAD_MB", "15")) * 1024 * 1024
+
+    # URL fixa do servidor (ex: http://10.100.0.20:5000) usada para montar o QR
+    # code de pareamento na aba Dispositivos. Se vazio, cai para a URL que o
+    # admin usou no navegador - o que gera um QR inválido se ele tiver acessado
+    # via localhost/127.0.0.1, já que o painel é sempre outro dispositivo.
+    PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/") or None
 
     # Painel da sala (app Android): janela de aviso "Começando em breve" antes
     # do início, e prazo de check-in depois do início antes de liberar a sala.

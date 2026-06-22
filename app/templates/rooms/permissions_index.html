@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Permissões - ReadyRoom{% endblock %}
+{% block content %}
+<h4 class="mb-3">Permissões</h4>
+
+<ul class="nav nav-tabs mb-3" id="permissionsTabs">
+    <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-salas" type="button">Agendamento de salas</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-relatorios" type="button">Relatórios</button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <div class="tab-pane fade show active" id="tab-salas">
+        <p class="text-muted small">
+            Por padrão, qualquer usuário logado pode reservar qualquer sala ativa. Aqui você
+            restringe quais salas só podem ser agendadas por quem pertence a determinados
+            grupos do AD (ex: sala VIP só para o grupo da diretoria, sala de feedback aberta a todos).
+        </p>
+
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>Sala</th>
+                    <th>Status</th>
+                    <th>Grupos com permissão</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for room in rooms %}
+                <tr>
+                    <td>{{ room.name }}</td>
+                    <td>
+                        {% if room.is_active %}
+                        <span class="badge bg-success">Ativa</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Inativa</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% set groups = room.allowed_group_cns %}
+                        {% if groups %}
+                        {% for cn in groups %}
+                        <span class="badge bg-info text-dark">{{ cn }}</span>
+                        {% endfor %}
+                        {% else %}
+                        <span class="badge bg-light text-dark border">Aberta a todos</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <a href="{{ url_for('rooms.room_permissions', room_id=room.id) }}" class="btn btn-sm btn-outline-primary">Gerenciar grupos</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-center text-muted">Nenhuma sala cadastrada.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="tab-pane fade" id="tab-relatorios">
+        <p class="text-muted small">
+            Por padrão, só administradores veem o relatório de estatísticas de reservas.
+            Selecione um ou mais grupos do AD para liberar o acesso também a quem
+            pertence a algum deles (vale para todas as salas, não é por sala).
+        </p>
+
+        {% if ad_groups_error %}
+        <div class="alert alert-warning col-md-6">{{ ad_groups_error }}</div>
+        {% elif not ad_groups %}
+        <p class="text-muted col-md-6">
+            Nenhum grupo encontrado no AD{{ " com os prefixos %s" % (ad_group_prefixes | join(", ")) if ad_group_prefixes else "" }}.
+        </p>
+        {% else %}
+        <form method="post" action="{{ url_for('rooms.update_report_viewer_groups') }}" class="col-md-6 mb-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="text" id="reportGroupFilterInput" class="form-control form-control-sm mb-2"
+                   placeholder="Filtrar {{ ad_groups | length }} grupos por nome...">
+            <div id="reportGroupCheckboxList" class="mb-2" style="max-height: 360px; overflow-y: auto;">
+                {% for group in ad_groups %}
+                <div class="form-check report-group-checkbox-item">
+                    <input class="form-check-input" type="checkbox" name="group_cns" value="{{ group.cn }}"
+                           id="report-group-{{ loop.index }}" {{ "checked" if group.cn in allowed_report_group_cns else "" }}>
+                    <label class="form-check-label" for="report-group-{{ loop.index }}">
+                        {{ group.cn }}{% if group.description %} <span class="text-muted small">- {{ group.description }}</span>{% endif %}
+                    </label>
+                </div>
+                {% endfor %}
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">Salvar grupos</button>
+        </form>
+        <script>
+        document.getElementById("reportGroupFilterInput").addEventListener("input", function () {
+            const q = this.value.trim().toLowerCase();
+            document.querySelectorAll("#reportGroupCheckboxList .report-group-checkbox-item").forEach(function (item) {
+                item.classList.toggle("d-none", !item.textContent.toLowerCase().includes(q));
+            });
+        });
+        </script>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

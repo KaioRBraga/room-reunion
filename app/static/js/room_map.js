@@ -13,12 +13,43 @@ document.addEventListener("DOMContentLoaded", function () {
     const statusBox = document.getElementById("roomPinStatus");
     const nameInput = document.getElementById("roomPinName");
     const capacityInput = document.getElementById("roomPinCapacity");
-    const equipmentInput = document.getElementById("roomPinEquipment");
+    const equipmentCheckboxes = Array.from(document.querySelectorAll(".room-pin-equipment-checkbox"));
+    const equipmentOtherInput = document.getElementById("roomPinEquipmentOther");
     const availabilityInput = document.getElementById("roomPinAvailability");
+    const businessStartInput = document.getElementById("roomPinBusinessStart");
+    const businessEndInput = document.getElementById("roomPinBusinessEnd");
     const saveBtn = document.getElementById("roomPinSaveBtn");
     const unpinBtn = document.getElementById("roomPinUnpinBtn");
     const bookBtn = document.getElementById("roomPinBookBtn");
-    const fields = [nameInput, capacityInput, equipmentInput, availabilityInput];
+    const equipmentOptions = window.READYROOM_EQUIPMENT_OPTIONS || [];
+    const fields = [
+        nameInput,
+        capacityInput,
+        availabilityInput,
+        businessStartInput,
+        businessEndInput,
+        equipmentOtherInput,
+        ...equipmentCheckboxes,
+    ];
+
+    function getEquipmentNotes() {
+        const checked = equipmentCheckboxes.filter((el) => el.checked).map((el) => el.value);
+        const other = equipmentOtherInput.value
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+        return checked.concat(other).join(", ");
+    }
+
+    function setEquipmentForm(equipmentNotes) {
+        // Salas cadastradas antes do checklist podem ter o texto separado por
+        // quebra de linha em vez de vírgula (era um textarea) - aceita os dois.
+        const items = (equipmentNotes || "").split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+        equipmentCheckboxes.forEach((el) => {
+            el.checked = items.includes(el.value);
+        });
+        equipmentOtherInput.value = items.filter((i) => !equipmentOptions.includes(i)).join(", ");
+    }
 
     let currentRoomId = null;
     let pendingPos = null;
@@ -56,8 +87,26 @@ document.addEventListener("DOMContentLoaded", function () {
         el.style.top = y * 100 + "%";
     }
 
+    // Usuário comum não precisa ver/editar as configurações da sala - vai
+    // direto para o formulário de reserva. Só admin passa pela tela de detalhes
+    // (que também serve para editar nome/capacidade/equipamentos/horário).
+    function openReserveModalForRoom(roomId) {
+        fetch("/rooms/pins/" + roomId)
+            .then((res) => res.json())
+            .then((room) => {
+                updatePinStatus(room.id, room.is_occupied_now);
+                openReserveModal(room.id, room.name, room.min_attendees);
+            });
+    }
+
     function attachPinHandlers(el) {
-        el.addEventListener("click", () => openViewModal(el.dataset.roomId));
+        el.addEventListener("click", () => {
+            if (isAdmin) {
+                openViewModal(el.dataset.roomId);
+            } else {
+                openReserveModalForRoom(el.dataset.roomId);
+            }
+        });
         if (isAdmin) {
             el.addEventListener("dragstart", (evt) => {
                 evt.dataTransfer.setData("text/plain", "move:" + el.dataset.roomId);
@@ -104,8 +153,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 modalTitle.textContent = "Nova sala";
                 nameInput.value = "";
                 capacityInput.value = "";
-                equipmentInput.value = "";
+                setEquipmentForm("");
                 availabilityInput.value = "";
+                businessStartInput.value = "";
+                businessEndInput.value = "";
                 modal.show();
             } else if (payload.startsWith("move:")) {
                 moveRoom(payload.slice(5), pos);
@@ -135,8 +186,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 modalTitle.textContent = room.name;
                 nameInput.value = room.name;
                 capacityInput.value = room.capacity;
-                equipmentInput.value = room.equipment_notes;
+                setEquipmentForm(room.equipment_notes);
                 availabilityInput.value = room.availability_notes;
+                businessStartInput.value = room.business_hours_start || "";
+                businessEndInput.value = room.business_hours_end || "";
 
                 statusBox.textContent = room.is_occupied_now ? "Ocupada agora" : "Livre agora";
                 statusBox.className = "badge mb-3 " + (room.is_occupied_now ? "bg-danger" : "bg-success");
@@ -145,6 +198,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 bookBtn.dataset.roomId = room.id;
                 bookBtn.dataset.roomName = room.name;
+                bookBtn.dataset.minAttendees = room.min_attendees || "";
                 bookBtn.classList.remove("d-none");
 
                 if (room.can_edit) {
@@ -178,8 +232,10 @@ document.addEventListener("DOMContentLoaded", function () {
         const payload = {
             name: nameInput.value.trim(),
             capacity: parseInt(capacityInput.value, 10),
-            equipment_notes: equipmentInput.value.trim(),
+            equipment_notes: getEquipmentNotes(),
             availability_notes: availabilityInput.value.trim(),
+            business_hours_start: businessStartInput.value,
+            business_hours_end: businessEndInput.value,
         };
 
         let url = "/rooms/pins";
@@ -213,17 +269,54 @@ document.addEventListener("DOMContentLoaded", function () {
             .catch(() => showError("Erro de comunicação com o servidor."));
     });
 
-    unpinBtn.addEventListener("click", function () {
-        if (!currentRoomId) return;
-        fetch("/rooms/pins/" + currentRoomId + "/unpin", {
+    function unpinRoom(roomId) {
+        return fetch("/rooms/pins/" + roomId + "/unpin", {
             method: "POST",
             headers: { "X-CSRFToken": csrfToken },
         }).then(() => {
-            const el = mapWrap.querySelector('.room-pin[data-room-id="' + currentRoomId + '"]');
+            const el = mapWrap.querySelector('.room-pin[data-room-id="' + roomId + '"]');
             if (el) el.remove();
-            modal.hide();
         });
+    }
+
+    // Arrastar pra lixeira desativa a sala de vez (diferente do botão "Remover
+    // do mapa", que só tira a posição e mantém a sala ativa/reservável).
+    function discardRoom(roomId) {
+        return fetch("/rooms/pins/" + roomId + "/discard", {
+            method: "POST",
+            headers: { "X-CSRFToken": csrfToken },
+        }).then(() => {
+            const el = mapWrap.querySelector('.room-pin[data-room-id="' + roomId + '"]');
+            if (el) el.remove();
+        });
+    }
+
+    unpinBtn.addEventListener("click", function () {
+        if (!currentRoomId) return;
+        unpinRoom(currentRoomId).then(() => modal.hide());
     });
+
+    // --- Lixeira fixa: arrastar um pin até aqui desativa a sala ---
+
+    const trashZone = document.getElementById("roomTrashZone");
+    if (isAdmin && trashZone) {
+        trashZone.addEventListener("dragover", (evt) => {
+            evt.preventDefault();
+            trashZone.style.transform = "scale(1.15)";
+        });
+        trashZone.addEventListener("dragleave", () => {
+            trashZone.style.transform = "scale(1)";
+        });
+        trashZone.addEventListener("drop", (evt) => {
+            evt.preventDefault();
+            trashZone.style.transform = "scale(1)";
+            const payload = evt.dataTransfer.getData("text/plain");
+            if (!payload || !payload.startsWith("move:")) return;
+            const roomId = payload.slice(5);
+            if (!confirm("Desativar esta sala? Ela vai sumir do mapa e da lista de salas ativas.")) return;
+            discardRoom(roomId);
+        });
+    }
 
     // --- Mini calendário de reserva, aberto a partir do pin ---
 
@@ -235,13 +328,110 @@ document.addEventListener("DOMContentLoaded", function () {
     const reserveFormWrap = document.getElementById("reserveFormWrap");
     const reserveRangeLabel = document.getElementById("reserveRangeLabel");
     const reserveTitleInput = document.getElementById("reserveTitle");
+    const reserveAttendeesInput = document.getElementById("reserveAttendees");
+    const reserveAttendeesHint = document.getElementById("reserveAttendeesHint");
+    const reserveVirtualUrlInput = document.getElementById("reserveVirtualUrl");
+    const reserveAttendeeSearchInput = document.getElementById("reserveAttendeeSearch");
+    const reserveAttendeeResultsBox = document.getElementById("reserveAttendeeResults");
+    const reserveAttendeeChipsBox = document.getElementById("reserveAttendeeChips");
     const reserveDescriptionInput = document.getElementById("reserveDescription");
     const reserveConfirmBtn = document.getElementById("reserveConfirmBtn");
     const reserveCancelSelectionBtn = document.getElementById("reserveCancelSelectionBtn");
+    const reserveDateInput = document.getElementById("reserveDateInput");
+    const reserveStartSelect = document.getElementById("reserveStartSelect");
+    const reserveEndSelect = document.getElementById("reserveEndSelect");
+    const reserveApplyTimeBtn = document.getElementById("reserveApplyTimeBtn");
 
     let reserveCalendar = null;
     let reserveRoomId = null;
     let reserveSelection = null;
+    let reserveMinAttendees = null;
+    let reserveSelectedAttendees = [];
+    let reserveAttendeeSearchTimer = null;
+    let reserveVirtualUrlTouched = false;
+
+    function stripDiacritics(text) {
+        // NFD separa cada acento como um caractere combinante próprio (U+0300-U+036F);
+        // filtrar por código evita depender de um literal unicode no código-fonte.
+        let result = "";
+        for (const ch of text.normalize("NFD")) {
+            const code = ch.codePointAt(0);
+            if (code < 0x0300 || code > 0x036f) {
+                result += ch;
+            }
+        }
+        return result;
+    }
+
+    function slugifyForJitsi(text) {
+        return stripDiacritics(text || "")
+            .replace(/[^a-zA-Z0-9\s]/g, "") // remove caracteres especiais
+            .trim()
+            .replace(/\s+/g, "_");
+    }
+
+    function updateReserveVirtualUrlSuggestion() {
+        if (reserveVirtualUrlTouched) return;
+        const slug = slugifyForJitsi(reserveTitleInput.value);
+        reserveVirtualUrlInput.value = slug ? "https://meet.jit.si/" + slug : "";
+    }
+
+    reserveVirtualUrlInput.addEventListener("input", function () {
+        reserveVirtualUrlTouched = true;
+    });
+    reserveTitleInput.addEventListener("input", updateReserveVirtualUrlSuggestion);
+
+    function renderReserveAttendeeChips() {
+        reserveAttendeeChipsBox.innerHTML = "";
+        reserveSelectedAttendees.forEach(function (person) {
+            const chip = document.createElement("span");
+            chip.className = "badge bg-secondary d-flex align-items-center gap-1";
+            chip.textContent = person.display_name + " (" + person.email + ")";
+            const removeBtn = document.createElement("button");
+            removeBtn.type = "button";
+            removeBtn.className = "btn-close btn-close-white";
+            removeBtn.style.fontSize = "0.55em";
+            removeBtn.setAttribute("aria-label", "Remover");
+            removeBtn.addEventListener("click", function () {
+                reserveSelectedAttendees = reserveSelectedAttendees.filter((p) => p.email !== person.email);
+                renderReserveAttendeeChips();
+            });
+            chip.appendChild(removeBtn);
+            reserveAttendeeChipsBox.appendChild(chip);
+        });
+    }
+
+    function addReserveAttendee(person) {
+        if (reserveSelectedAttendees.some((p) => p.email === person.email)) return;
+        reserveSelectedAttendees.push(person);
+        renderReserveAttendeeChips();
+        reserveAttendeeSearchInput.value = "";
+        reserveAttendeeResultsBox.innerHTML = "";
+    }
+
+    reserveAttendeeSearchInput.addEventListener("input", function () {
+        clearTimeout(reserveAttendeeSearchTimer);
+        const q = reserveAttendeeSearchInput.value.trim();
+        if (q.length < 2) {
+            reserveAttendeeResultsBox.innerHTML = "";
+            return;
+        }
+        reserveAttendeeSearchTimer = setTimeout(function () {
+            fetch("/bookings/api/people?q=" + encodeURIComponent(q))
+                .then((res) => res.json())
+                .then(function (people) {
+                    reserveAttendeeResultsBox.innerHTML = "";
+                    people.forEach(function (person) {
+                        const item = document.createElement("button");
+                        item.type = "button";
+                        item.className = "list-group-item list-group-item-action";
+                        item.textContent = person.display_name + " (" + person.email + ")";
+                        item.addEventListener("click", () => addReserveAttendee(person));
+                        reserveAttendeeResultsBox.appendChild(item);
+                    });
+                });
+        }, 300);
+    });
 
     function toLocalIso(date) {
         const pad = (n) => String(n).padStart(2, "0");
@@ -260,21 +450,89 @@ document.addEventListener("DOMContentLoaded", function () {
         return start.toLocaleString("pt-BR", dateOpts) + " - " + end.toLocaleString("pt-BR", timeOpts);
     }
 
-    function openReserveModal(roomId, roomName) {
+    function toDateInputValue(date) {
+        const pad = (n) => String(n).padStart(2, "0");
+        return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate());
+    }
+
+    function toHHMM(date) {
+        const pad = (n) => String(n).padStart(2, "0");
+        return pad(date.getHours()) + ":" + pad(date.getMinutes());
+    }
+
+    function nextHalfHour(date) {
+        const result = new Date(date);
+        result.setSeconds(0, 0);
+        const remainder = result.getMinutes() % 30;
+        result.setMinutes(result.getMinutes() + (remainder === 0 ? 30 : 30 - remainder));
+        return result;
+    }
+
+    // Mantém o horário padrão dentro da janela visível da agenda
+    // (slotMinTime/slotMaxTime) mesmo se "agora" for de madrugada/noite.
+    function clampToVisibleRange(date) {
+        const result = new Date(date);
+        if (result.getHours() < 7) {
+            result.setHours(7, 0, 0, 0);
+        } else if (result.getHours() >= 21) {
+            result.setHours(20, 30, 0, 0);
+        }
+        return result;
+    }
+
+    // Aplica a data/horário escolhidos nos dropdowns como se o usuário tivesse
+    // arrastado a seleção direto na agenda (reaproveita o callback `select`).
+    function applyDropdownSelection() {
+        if (!reserveCalendar || !reserveDateInput.value) return;
+        const start = new Date(reserveDateInput.value + "T" + reserveStartSelect.value + ":00");
+        const end = new Date(reserveDateInput.value + "T" + reserveEndSelect.value + ":00");
+        if (end <= start) {
+            reserveError.textContent = "O horário de término deve ser depois do início.";
+            reserveError.classList.remove("d-none");
+            return;
+        }
+        reserveCalendar.gotoDate(start);
+        reserveCalendar.select(start, end);
+    }
+
+    [reserveDateInput, reserveStartSelect, reserveEndSelect].forEach((el) =>
+        el.addEventListener("change", applyDropdownSelection)
+    );
+    reserveApplyTimeBtn.addEventListener("click", applyDropdownSelection);
+
+    function openReserveModal(roomId, roomName, minAttendees) {
         reserveRoomId = roomId;
         reserveSelection = null;
+        reserveMinAttendees = minAttendees ? parseInt(minAttendees, 10) : null;
         reserveModalTitle.textContent = "Reservar - " + roomName;
         reserveError.classList.add("d-none");
         reserveFormWrap.classList.add("d-none");
+        reserveSelectedAttendees = [];
+        reserveVirtualUrlTouched = false;
+        reserveAttendeeResultsBox.innerHTML = "";
+        renderReserveAttendeeChips();
+        if (reserveMinAttendees) {
+            reserveAttendeesHint.textContent = "Esta sala exige no mínimo " + reserveMinAttendees + " participantes.";
+            reserveAttendeesInput.min = reserveMinAttendees;
+        } else {
+            reserveAttendeesHint.textContent = "";
+            reserveAttendeesInput.min = 1;
+        }
+
+        const defaultStart = clampToVisibleRange(nextHalfHour(new Date()));
+        const defaultEnd = new Date(defaultStart.getTime() + 30 * 60000);
+        reserveDateInput.value = toDateInputValue(defaultStart);
+        reserveStartSelect.value = toHHMM(defaultStart);
+        reserveEndSelect.value = toHHMM(defaultEnd);
 
         if (reserveCalendar) {
             reserveCalendar.destroy();
         }
         reserveCalendar = new FullCalendar.Calendar(reserveCalendarEl, {
-            initialView: "timeGridWeek",
+            initialView: "timeGridDay",
             height: 450,
             locale: "pt-br",
-            headerToolbar: { left: "prev,next today", center: "title", right: "timeGridWeek,timeGridDay" },
+            headerToolbar: { left: "prev,next today", center: "title", right: "timeGridDay,timeGridWeek" },
             slotMinTime: "07:00:00",
             slotMaxTime: "21:00:00",
             selectable: true,
@@ -283,6 +541,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 reserveSelection = { start: info.start, end: info.end };
                 reserveRangeLabel.textContent = formatRange(info.start, info.end);
                 reserveTitleInput.value = "";
+                reserveAttendeesInput.value = reserveMinAttendees || 1;
+                reserveVirtualUrlInput.value = "";
                 reserveDescriptionInput.value = "";
                 reserveError.classList.add("d-none");
                 reserveFormWrap.classList.remove("d-none");
@@ -301,6 +561,7 @@ document.addEventListener("DOMContentLoaded", function () {
         });
         reserveCalendar.render();
         reserveModal.show();
+        applyDropdownSelection();
     }
 
     bookBtn.addEventListener("click", function () {
@@ -308,7 +569,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const roomName = bookBtn.dataset.roomName;
         if (!roomId) return;
         modal.hide();
-        openReserveModal(roomId, roomName);
+        openReserveModal(roomId, roomName, bookBtn.dataset.minAttendees);
     });
 
     reserveCancelSelectionBtn.addEventListener("click", function () {
@@ -333,6 +594,9 @@ document.addEventListener("DOMContentLoaded", function () {
             title: title,
             start: toLocalIso(reserveSelection.start),
             end: toLocalIso(reserveSelection.end),
+            attendees_count: parseInt(reserveAttendeesInput.value, 10) || 1,
+            virtual_room_url: reserveVirtualUrlInput.value.trim(),
+            attendee_emails: reserveSelectedAttendees.map((p) => p.email),
             description: reserveDescriptionInput.value.trim(),
         };
 
@@ -352,9 +616,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 reserveFormWrap.classList.add("d-none");
                 reserveSelection = null;
+                reserveSelectedAttendees = [];
+                renderReserveAttendeeChips();
                 reserveCalendar.unselect();
                 reserveCalendar.refetchEvents();
-                
+
                 showSuccess("Reserva criada com sucesso!");
             })
             .catch(() => {

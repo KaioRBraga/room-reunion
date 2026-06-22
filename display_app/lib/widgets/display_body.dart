@@ -11,6 +11,7 @@ class DisplayBody extends StatelessWidget {
   final VoidCallback? onEnd;
   final VoidCallback? onExtend;
   final VoidCallback? onStartNow;
+  final void Function(DateTime start, DateTime end)? onSlotTap;
   final DateTime now;
 
   const DisplayBody({
@@ -22,12 +23,13 @@ class DisplayBody extends StatelessWidget {
     this.onEnd,
     this.onExtend,
     this.onStartNow,
+    this.onSlotTap,
   });
 
   static const _statusLabels = {
-    DisplayStatusKind.startingSoon: 'Starting Soon',
-    DisplayStatusKind.inUse: 'In Use',
-    DisplayStatusKind.available: 'Available',
+    DisplayStatusKind.startingSoon: 'Começando',
+    DisplayStatusKind.inUse: 'Em Uso',
+    DisplayStatusKind.available: 'Disponível',
   };
 
   List<Color> get _gradientColors {
@@ -57,7 +59,7 @@ class DisplayBody extends StatelessWidget {
             final isWide = constraints.maxWidth > constraints.maxHeight;
             final timeline = Padding(
               padding: const EdgeInsets.all(12),
-              child: DayTimeline(events: status.todaySchedule, now: now),
+              child: DayTimeline(events: status.todaySchedule, now: now, onSlotTap: onSlotTap),
             );
 
             if (isWide) {
@@ -174,6 +176,9 @@ class DisplayBody extends StatelessWidget {
       rows.add(
         _infoRow(Icons.schedule, '${timeFormat.format(meeting.start)} - ${timeFormat.format(meeting.end)}'),
       );
+    }
+    if (meeting.virtualRoomUrl != null) {
+      rows.add(_infoRow(Icons.videocam, meeting.virtualRoomUrl!));
     }
     return rows;
   }

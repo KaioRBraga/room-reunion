@@ -43,6 +43,10 @@
                         <label class="form-label">Título</label>
                         <input type="text" id="bookingTitle" class="form-control" required>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descrição / Pauta da reunião</label>
+                        <textarea id="bookingDescription" class="form-control" rows="2" placeholder="Vai como assunto do e-mail de convite"></textarea>
+                    </div>
                     <div class="row mb-3">
                         <div class="col">
                             <label class="form-label">Início</label>
@@ -54,8 +58,19 @@
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Descrição / participantes</label>
-                        <textarea id="bookingDescription" class="form-control" rows="2"></textarea>
+                        <label class="form-label">Número de participantes</label>
+                        <input type="number" id="bookingAttendees" class="form-control" min="1" value="1" required>
+                        <div id="bookingAttendeesHint" class="form-text"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">URL da sala virtual (opcional)</label>
+                        <input type="url" id="bookingVirtualUrl" class="form-control" placeholder="https://...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Convidados</label>
+                        <input type="text" id="bookingAttendeeSearch" class="form-control" placeholder="Buscar por nome ou e-mail">
+                        <div id="bookingAttendeeResults" class="list-group mt-1"></div>
+                        <div id="bookingAttendeeChips" class="d-flex flex-wrap gap-1 mt-2"></div>
                     </div>
                     <div id="bookingMeta" class="text-muted small d-none mb-2"></div>
                 </form>

@@ -38,6 +38,17 @@
     {% endif %}
 </div>
 
+{% if current_user.is_admin %}
+<a id="roomTrashZone" href="{{ url_for('rooms.trash_rooms') }}" class="position-fixed d-flex align-items-center justify-content-center rounded-circle bg-danger text-white text-decoration-none shadow"
+   style="bottom: 24px; right: 24px; width: 64px; height: 64px; z-index: 1040; transition: transform 0.15s;"
+   title="Arraste uma sala aqui para desativá-la, ou clique para abrir a lixeira">
+    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+        <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+    </svg>
+</a>
+{% endif %}
+
 <div class="modal fade" id="roomPinModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -58,12 +69,42 @@
                         <input type="number" id="roomPinCapacity" class="form-control" min="1" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Equipamentos e o que a sala oferece</label>
-                        <textarea id="roomPinEquipment" class="form-control" rows="2"></textarea>
+                        <label class="form-label d-block">Equipamentos disponíveis</label>
+                        <div class="row">
+                            {% for option in equipment_options %}
+                            <div class="col-6 form-check">
+                                <input class="form-check-input room-pin-equipment-checkbox" type="checkbox"
+                                       value="{{ option }}" id="roomPinEquip-{{ loop.index }}">
+                                <label class="form-check-label" for="roomPinEquip-{{ loop.index }}">{{ option }}</label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Outros equipamentos (separados por vírgula)</label>
+                        <input type="text" id="roomPinEquipmentOther" class="form-control" placeholder="Ex: Apple TV, Lousa interativa">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Disponibilidade</label>
                         <textarea id="roomPinAvailability" class="form-control" rows="2" placeholder="Ex: Disponível em horário comercial"></textarea>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col">
+                            <label class="form-label">Horário comercial - início</label>
+                            <select id="roomPinBusinessStart" class="form-select">
+                                {% for value, label in time_choices %}
+                                <option value="{{ value }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col">
+                            <label class="form-label">Horário comercial - fim</label>
+                            <select id="roomPinBusinessEnd" class="form-select">
+                                {% for value, label in time_choices %}
+                                <option value="{{ value }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -86,7 +127,34 @@
             </div>
             <div class="modal-body">
                 <div id="reserveError" class="alert alert-danger d-none"></div>
-                <p class="text-muted small mb-2">Clique ou arraste no calendário para escolher o horário.</p>
+
+                <p class="text-muted small mb-2">Escolha o horário pelos campos abaixo, ou clique/arraste direto na agenda.</p>
+                <div class="row g-2 mb-3 align-items-end">
+                    <div class="col-5">
+                        <label class="form-label small mb-1">Data</label>
+                        <input type="date" id="reserveDateInput" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-3">
+                        <label class="form-label small mb-1">Início</label>
+                        <select id="reserveStartSelect" class="form-select form-select-sm">
+                            {% for value, label in time_choices %}
+                            {% if value %}<option value="{{ value }}">{{ label }}</option>{% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-3">
+                        <label class="form-label small mb-1">Fim</label>
+                        <select id="reserveEndSelect" class="form-select form-select-sm">
+                            {% for value, label in time_choices %}
+                            {% if value %}<option value="{{ value }}">{{ label }}</option>{% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-1">
+                        <button type="button" id="reserveApplyTimeBtn" class="btn btn-sm btn-primary w-100">OK</button>
+                    </div>
+                </div>
+
                 <div id="reserveCalendar" class="mb-3"></div>
                 <div id="reserveFormWrap" class="d-none border-top pt-3">
                     <p class="mb-2"><strong>Horário selecionado:</strong> <span id="reserveRangeLabel"></span></p>
@@ -95,8 +163,23 @@
                         <input type="text" id="reserveTitle" class="form-control" required>
                     </div>
                     <div class="mb-2">
-                        <label class="form-label">Descrição / participantes</label>
-                        <textarea id="reserveDescription" class="form-control" rows="2"></textarea>
+                        <label class="form-label">Descrição / Pauta da reunião</label>
+                        <textarea id="reserveDescription" class="form-control" rows="2" placeholder="Vai como assunto do e-mail de convite"></textarea>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Número de participantes</label>
+                        <input type="number" id="reserveAttendees" class="form-control" min="1" value="1" required>
+                        <div id="reserveAttendeesHint" class="form-text"></div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">URL da sala virtual (opcional)</label>
+                        <input type="url" id="reserveVirtualUrl" class="form-control" placeholder="https://...">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Convidados</label>
+                        <input type="text" id="reserveAttendeeSearch" class="form-control" placeholder="Buscar por nome ou e-mail">
+                        <div id="reserveAttendeeResults" class="list-group mt-1"></div>
+                        <div id="reserveAttendeeChips" class="d-flex flex-wrap gap-1 mt-2"></div>
                     </div>
                     <div class="d-flex gap-2">
                         <button type="button" id="reserveConfirmBtn" class="btn btn-primary btn-sm">Confirmar reserva</button>
@@ -114,5 +197,8 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<script>
+    window.READYROOM_EQUIPMENT_OPTIONS = {{ equipment_options | tojson }};
+</script>
 <script src="{{ url_for('static', filename='js/room_map.js') }}"></script>
 {% endblock %}

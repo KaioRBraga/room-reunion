@@ -12,7 +12,102 @@ document.addEventListener("DOMContentLoaded", function () {
     const titleInput = document.getElementById("bookingTitle");
     const startInput = document.getElementById("bookingStart");
     const endInput = document.getElementById("bookingEnd");
+    const attendeesInput = document.getElementById("bookingAttendees");
+    const attendeesHint = document.getElementById("bookingAttendeesHint");
+    const virtualUrlInput = document.getElementById("bookingVirtualUrl");
+    const attendeeSearchInput = document.getElementById("bookingAttendeeSearch");
+    const attendeeResultsBox = document.getElementById("bookingAttendeeResults");
+    const attendeeChipsBox = document.getElementById("bookingAttendeeChips");
     const descriptionInput = document.getElementById("bookingDescription");
+
+    let selectedAttendees = [];
+    let attendeeSearchTimer = null;
+    let virtualUrlTouched = false;
+
+    function stripDiacritics(text) {
+        // NFD separa cada acento como um caractere combinante próprio (U+0300-U+036F);
+        // filtrar por código evita depender de um literal unicode no código-fonte.
+        let result = "";
+        for (const ch of text.normalize("NFD")) {
+            const code = ch.codePointAt(0);
+            if (code < 0x0300 || code > 0x036f) {
+                result += ch;
+            }
+        }
+        return result;
+    }
+
+    function slugifyForJitsi(text) {
+        return stripDiacritics(text || "")
+            .replace(/[^a-zA-Z0-9\s]/g, "") // remove caracteres especiais
+            .trim()
+            .replace(/\s+/g, "_");
+    }
+
+    function updateVirtualUrlSuggestion() {
+        if (virtualUrlTouched) return;
+        const slug = slugifyForJitsi(titleInput.value);
+        virtualUrlInput.value = slug ? "https://meet.jit.si/" + slug : "";
+    }
+
+    virtualUrlInput.addEventListener("input", function () {
+        virtualUrlTouched = true;
+    });
+    titleInput.addEventListener("input", updateVirtualUrlSuggestion);
+
+    function renderAttendeeChips() {
+        attendeeChipsBox.innerHTML = "";
+        selectedAttendees.forEach(function (person) {
+            const chip = document.createElement("span");
+            chip.className = "badge bg-secondary d-flex align-items-center gap-1";
+            chip.textContent = person.display_name + " (" + person.email + ")";
+            if (!attendeeSearchInput.disabled) {
+                const removeBtn = document.createElement("button");
+                removeBtn.type = "button";
+                removeBtn.className = "btn-close btn-close-white";
+                removeBtn.style.fontSize = "0.55em";
+                removeBtn.setAttribute("aria-label", "Remover");
+                removeBtn.addEventListener("click", function () {
+                    selectedAttendees = selectedAttendees.filter((p) => p.email !== person.email);
+                    renderAttendeeChips();
+                });
+                chip.appendChild(removeBtn);
+            }
+            attendeeChipsBox.appendChild(chip);
+        });
+    }
+
+    function addAttendee(person) {
+        if (selectedAttendees.some((p) => p.email === person.email)) return;
+        selectedAttendees.push(person);
+        renderAttendeeChips();
+        attendeeSearchInput.value = "";
+        attendeeResultsBox.innerHTML = "";
+    }
+
+    attendeeSearchInput.addEventListener("input", function () {
+        clearTimeout(attendeeSearchTimer);
+        const q = attendeeSearchInput.value.trim();
+        if (q.length < 2) {
+            attendeeResultsBox.innerHTML = "";
+            return;
+        }
+        attendeeSearchTimer = setTimeout(function () {
+            fetch("/bookings/api/people?q=" + encodeURIComponent(q))
+                .then((res) => res.json())
+                .then(function (people) {
+                    attendeeResultsBox.innerHTML = "";
+                    people.forEach(function (person) {
+                        const item = document.createElement("button");
+                        item.type = "button";
+                        item.className = "list-group-item list-group-item-action";
+                        item.textContent = person.display_name + " (" + person.email + ")";
+                        item.addEventListener("click", () => addAttendee(person));
+                        attendeeResultsBox.appendChild(item);
+                    });
+                });
+        }, 300);
+    });
     const saveBtn = document.getElementById("bookingSaveBtn");
     const cancelBtn = document.getElementById("bookingCancelBtn");
 
@@ -34,6 +129,17 @@ document.addEventListener("DOMContentLoaded", function () {
         modalError.classList.remove("d-none");
     }
 
+    function updateAttendeesHint() {
+        const room = rooms.find((r) => String(r.id) === String(roomSelect.value));
+        if (room && room.min_attendees) {
+            attendeesHint.textContent = "Esta sala exige no mínimo " + room.min_attendees + " participantes.";
+            attendeesInput.min = room.min_attendees;
+        } else {
+            attendeesHint.textContent = "";
+            attendeesInput.min = 1;
+        }
+    }
+
     function resetModal() {
         modalError.classList.add("d-none");
         bookingMeta.classList.add("d-none");
@@ -43,8 +149,16 @@ document.addEventListener("DOMContentLoaded", function () {
         titleInput.disabled = false;
         startInput.disabled = false;
         endInput.disabled = false;
+        attendeesInput.disabled = false;
+        virtualUrlInput.disabled = false;
+        attendeeSearchInput.disabled = false;
+        attendeeSearchInput.classList.remove("d-none");
         descriptionInput.disabled = false;
         currentBookingId = null;
+        selectedAttendees = [];
+        virtualUrlTouched = false;
+        attendeeResultsBox.innerHTML = "";
+        renderAttendeeChips();
     }
 
     function openCreateModal(start, end, roomId) {
@@ -54,7 +168,10 @@ document.addEventListener("DOMContentLoaded", function () {
         titleInput.value = "";
         startInput.value = toLocalInputValue(start);
         endInput.value = toLocalInputValue(end);
+        attendeesInput.value = 1;
+        virtualUrlInput.value = "";
         descriptionInput.value = "";
+        updateAttendeesHint();
         modal.show();
     }
 
@@ -63,15 +180,27 @@ document.addEventListener("DOMContentLoaded", function () {
         modalTitle.textContent = "Detalhes da reserva";
         currentBookingId = event.id;
         roomSelect.value = event.extendedProps.room_id;
-        titleInput.value = event.title;
+        titleInput.value = event.extendedProps.raw_title;
         startInput.value = toLocalInputValue(event.start);
         endInput.value = toLocalInputValue(event.end);
+        attendeesInput.value = event.extendedProps.attendees_count || 1;
+        virtualUrlInput.value = event.extendedProps.virtual_room_url || "";
         descriptionInput.value = event.extendedProps.description || "";
+        updateAttendeesHint();
+        selectedAttendees = (event.extendedProps.attendee_emails || []).map((email) => ({
+            email: email,
+            display_name: email,
+        }));
 
         roomSelect.disabled = true;
         titleInput.disabled = true;
         startInput.disabled = true;
         endInput.disabled = true;
+        attendeesInput.disabled = true;
+        virtualUrlInput.disabled = true;
+        attendeeSearchInput.disabled = true;
+        attendeeSearchInput.classList.add("d-none");
+        renderAttendeeChips();
         descriptionInput.disabled = true;
 
         bookingMeta.textContent = "Organizador: " + event.extendedProps.organizer;
@@ -124,6 +253,8 @@ document.addEventListener("DOMContentLoaded", function () {
         calendar.refetchEvents();
     });
 
+    roomSelect.addEventListener("change", updateAttendeesHint);
+
     saveBtn.addEventListener("click", function () {
         modalError.classList.add("d-none");
         const payload = {
@@ -131,6 +262,9 @@ document.addEventListener("DOMContentLoaded", function () {
             title: titleInput.value.trim(),
             start: startInput.value,
             end: endInput.value,
+            attendees_count: parseInt(attendeesInput.value, 10) || 1,
+            virtual_room_url: virtualUrlInput.value.trim(),
+            attendee_emails: selectedAttendees.map((p) => p.email),
             description: descriptionInput.value.trim(),
         };
 

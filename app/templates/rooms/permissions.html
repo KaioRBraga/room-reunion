@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Permissões - {{ room.name }} - ReadyRoom{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('rooms.permissions_index') }}">&larr; Permissões de agendamento</a></p>
+<h4 class="mb-3">Permissão de agendamento - {{ room.name }}</h4>
+<p class="text-muted small">
+    Por padrão, qualquer usuário logado pode reservar esta sala. Selecione um ou mais
+    grupos do AD para restringir o agendamento a quem pertence a algum deles
+    (administradores sempre podem reservar).
+</p>
+
+{% if ad_groups_error %}
+<div class="alert alert-warning col-md-6">{{ ad_groups_error }}</div>
+{% elif not ad_groups %}
+<p class="text-muted col-md-6">
+    Nenhum grupo encontrado no AD{{ " com os prefixos %s" % (ad_group_prefixes | join(", ")) if ad_group_prefixes else "" }}.
+</p>
+{% else %}
+<form method="post" action="{{ url_for('rooms.update_booking_groups', room_id=room.id) }}" class="col-md-6 mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" id="groupFilterInput" class="form-control form-control-sm mb-2"
+           placeholder="Filtrar {{ ad_groups | length }} grupos por nome...">
+    <div id="groupCheckboxList" class="mb-2" style="max-height: 360px; overflow-y: auto;">
+        {% for group in ad_groups %}
+        <div class="form-check group-checkbox-item">
+            <input class="form-check-input" type="checkbox" name="group_cns" value="{{ group.cn }}"
+                   id="group-{{ loop.index }}" {{ "checked" if group.cn in allowed_group_cns else "" }}>
+            <label class="form-check-label" for="group-{{ loop.index }}">
+                {{ group.cn }}{% if group.description %} <span class="text-muted small">- {{ group.description }}</span>{% endif %}
+            </label>
+        </div>
+        {% endfor %}
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Salvar grupos</button>
+</form>
+<script>
+document.getElementById("groupFilterInput").addEventListener("input", function () {
+    const q = this.value.trim().toLowerCase();
+    document.querySelectorAll("#groupCheckboxList .group-checkbox-item").forEach(function (item) {
+        item.classList.toggle("d-none", !item.textContent.toLowerCase().includes(q));
+    });
+});
+</script>
+{% endif %}
+{% endblock %}

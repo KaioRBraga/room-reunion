@@ -1,4 +1,5 @@
 import logging
+import re
 import ssl
 
 from ldap3 import SIMPLE, SUBTREE, Connection, Server, Tls
@@ -6,6 +7,8 @@ from ldap3.core.exceptions import LDAPException
 from ldap3.utils.conv import escape_filter_chars
 
 from config import Config
+
+_DN_CN_RE = re.compile(r"^CN=([^,]+)", re.IGNORECASE)
 
 logger = logging.getLogger(__name__)
 
@@ -94,3 +97,134 @@ def is_admin(conn, username):
         check_user_membership(conn, username, group_cn)
         for group_cn in Config.GRUPOS_ADMIN_SALAS
     )
+
+
+def get_member_of_cns(conn, username):
+    """Cn de todos os grupos AD do usuário, extraídos dos DNs de memberOf.
+
+    Usado para cachear na sessão no login e checar permissão de agendamento
+    por sala (`Room.is_bookable_by`) sem precisar de uma nova consulta LDAP
+    por reserva.
+    """
+    safe_username = escape_filter_chars(username)
+    conn.search(
+        search_base=Config.BASE_DN,
+        search_filter=f"(sAMAccountName={safe_username})",
+        attributes=["memberOf"],
+        search_scope=SUBTREE,
+    )
+    if not conn.entries or "memberOf" not in conn.entries[0]:
+        return set()
+
+    cns = set()
+    for dn in conn.entries[0].memberOf.values:
+        match = _DN_CN_RE.match(dn)
+        if match:
+            cns.add(match.group(1))
+    return cns
+
+
+def _build_service_connection():
+    """Conexão de leitura para consultas fora do fluxo de login (sem bind do usuário).
+
+    Requer LDAP_SERVICE_USER/LDAP_SERVICE_PASSWORD no .env - conta de serviço
+    só de leitura, sem privilégios administrativos no AD.
+    """
+    if not Config.LDAP_SERVICE_USER or not Config.LDAP_SERVICE_PASSWORD:
+        raise LdapAuthError(
+            "LDAP_SERVICE_USER/LDAP_SERVICE_PASSWORD não configurados no .env."
+        )
+    server = _build_server()
+    try:
+        return Connection(
+            server,
+            user=f"{Config.DOMINIO_AD}\\{Config.LDAP_SERVICE_USER}",
+            password=Config.LDAP_SERVICE_PASSWORD,
+            authentication=SIMPLE,
+            auto_bind=True,
+        )
+    except LDAPException as exc:
+        logger.error("Falha ao autenticar conta de serviço LDAP: %s", exc)
+        raise LdapAuthError("Não foi possível conectar ao AD com a conta de serviço.") from exc
+
+
+def list_groups(prefixes=None):
+    """Lista grupos do AD (cn + description), opcionalmente filtrando por um ou mais prefixos do cn.
+
+    O AD costuma ter centenas de grupos nativos do Windows misturados aos
+    grupos da organização - sem filtro de prefixo, a lista fica grande demais
+    para ser útil numa tela de permissão de salas.
+    """
+    conn = _build_service_connection()
+    try:
+        prefixes = [p for p in (prefixes or []) if p]
+        if prefixes:
+            prefix_filters = "".join(f"(cn={escape_filter_chars(p)}*)" for p in prefixes)
+            search_filter = f"(&(objectClass=group)(|{prefix_filters}))"
+        else:
+            search_filter = "(objectClass=group)"
+        conn.search(
+            search_base=Config.BASE_DN,
+            search_filter=search_filter,
+            attributes=["cn", "description"],
+            search_scope=SUBTREE,
+        )
+        groups = []
+        for entry in conn.entries:
+            if "cn" not in entry or not entry.cn.value:
+                continue
+            description = entry.description.value if "description" in entry and entry.description else None
+            groups.append({"cn": entry.cn.value, "description": description})
+        groups.sort(key=lambda g: g["cn"].lower())
+        return groups
+    finally:
+        conn.unbind()
+
+
+def search_people(query, limit=10):
+    """Busca pessoas no AD por nome, usuário ou e-mail (conta de serviço).
+
+    Complementa a busca local de convidados (`app/auth/services.py:search_users`,
+    restrita a quem já logou no ReadyRoom) para alcançar qualquer colaborador
+    cadastrado no AD.
+    """
+    safe_query = escape_filter_chars(query)
+    conn = _build_service_connection()
+    try:
+        conn.search(
+            search_base=Config.BASE_DN,
+            search_filter=(
+                "(&(objectCategory=person)(objectClass=user)"
+                f"(|(displayName=*{safe_query}*)(sAMAccountName=*{safe_query}*)(mail=*{safe_query}*)))"
+            ),
+            attributes=["sAMAccountName", "displayName", "mail"],
+            search_scope=SUBTREE,
+            size_limit=limit,
+        )
+        people = []
+        for entry in conn.entries:
+            mail = entry.mail.value if "mail" in entry and entry.mail else None
+            if not mail:
+                continue
+            username = entry.sAMAccountName.value if "sAMAccountName" in entry else None
+            display_name = entry.displayName.value if "displayName" in entry and entry.displayName else None
+            people.append(
+                {"username": username, "display_name": display_name or username or mail, "email": mail}
+            )
+        people.sort(key=lambda p: (p["display_name"] or "").lower())
+        return people
+    finally:
+        conn.unbind()
+
+
+def get_member_of_cns_for_user(username):
+    """Como `get_member_of_cns`, mas abrindo a própria conexão (conta de serviço).
+
+    Usado quando não há uma conexão LDAP de usuário já aberta - ex: checagem
+    de permissão de sala ao agendar pelo PIN do tablet, sem sessão web.
+    """
+    conn = _build_service_connection()
+    try:
+        return get_member_of_cns(conn, username)
+    finally:
+        conn.unbind()
