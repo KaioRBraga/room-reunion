@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'screens/display_screen.dart';
 import 'screens/setup_screen.dart';
 import 'services/device_config.dart';
+import 'theme/app_colors.dart';
 
 void main() {
   runApp(const ReadyRoomDisplayApp());
@@ -13,10 +15,25 @@ class ReadyRoomDisplayApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: AppColors.primary,
+      brightness: Brightness.dark,
+      primary: AppColors.primary,
+      surface: AppColors.surface,
+    );
+    final textTheme = GoogleFonts.interTextTheme(ThemeData.dark().textTheme);
+
     return MaterialApp(
       title: 'ReadyRoom Display',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.indigo),
+      theme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        colorScheme: colorScheme,
+        scaffoldBackgroundColor: AppColors.bg,
+        textTheme: textTheme,
+        fontFamily: GoogleFonts.inter().fontFamily,
+      ),
       home: const RootScreen(),
     );
   }

@@ -56,6 +56,17 @@ def test_unpin_room_keeps_room_active(app):
     assert room.is_active is True
 
 
+def _tab_rooms_html(html):
+    """A página /rooms/settings renderiza todas as abas no mesmo HTML (o
+    Bootstrap só alterna a visibilidade via CSS) - as outras abas (Dispositivos,
+    Permissões) sempre listam todas as salas, então os testes de filtro de
+    inativas precisam ficar restritos ao trecho da aba "Lista de salas".
+    """
+    start = html.index('id="tab-rooms"')
+    end = html.index("<!-- ===== Dispositivos", start)
+    return html[start:end]
+
+
 def test_list_rooms_hides_inactive_by_default(app):
     db.session.add(Room(name="Sala Ativa", capacity=4))
     db.session.add(Room(name="Sala Inativa", capacity=4, is_active=False))
@@ -63,11 +74,11 @@ def test_list_rooms_hides_inactive_by_default(app):
 
     client = app.test_client()
     _login_admin(client)
-    resp = client.get("/rooms/list")
-    html = resp.get_data(as_text=True)
+    resp = client.get("/rooms/settings?tab=rooms")
+    tab_html = _tab_rooms_html(resp.get_data(as_text=True))
 
-    assert "Sala Ativa" in html
-    assert "Sala Inativa" not in html
+    assert "Sala Ativa" in tab_html
+    assert "Sala Inativa" not in tab_html
 
 
 def test_list_rooms_show_inactive_param_reveals_them(app):
@@ -77,8 +88,8 @@ def test_list_rooms_show_inactive_param_reveals_them(app):
 
     client = app.test_client()
     _login_admin(client)
-    resp = client.get("/rooms/list?show_inactive=1")
-    html = resp.get_data(as_text=True)
+    resp = client.get("/rooms/settings?tab=rooms&show_inactive=1")
+    tab_html = _tab_rooms_html(resp.get_data(as_text=True))
 
-    assert "Sala Ativa" in html
-    assert "Sala Inativa" in html
+    assert "Sala Ativa" in tab_html
+    assert "Sala Inativa" in tab_html

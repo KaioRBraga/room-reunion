@@ -18,8 +18,16 @@ from flask_login import current_user, login_required
 from app.auth.decorators import admin_required
 from app.extensions import db
 from app.ldap_client import LdapAuthError, list_groups
-from app.models import FloorMap, ReportViewerGroup, Room, RoomBookingGroup
+from app.models import (
+    DisplayLayoutSettings,
+    FloorMap,
+    ReportViewerGroup,
+    Room,
+    RoomBookingGroup,
+    SiteBrandingSettings,
+)
 from app.rooms import rooms_bp
+from app.rooms.branding_storage import InvalidLogoFileError, delete_logo_file, save_uploaded_logo
 from app.rooms.forms import EQUIPMENT_OPTIONS, RoomForm, half_hour_choices
 from app.rooms.map_storage import InvalidMapFileError, map_image_path, save_uploaded_map
 
@@ -257,35 +265,163 @@ def permanently_delete_room(room_id):
     return redirect(url_for("rooms.trash_rooms"))
 
 
-# --- Gestão tabular antiga (admin-only): lista, criar, editar, desativar ---
+_SETTINGS_TABS = {"rooms", "devices", "layout", "permissions"}
+_LAYOUT_COLOR_FIELDS = ("color_available", "color_starting_soon", "color_in_use")
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
-@rooms_bp.route("/list")
+@rooms_bp.route("/settings")
 @admin_required
-def list_rooms():
-    show_inactive = request.args.get("show_inactive") == "1"
-    query = Room.query
-    if not show_inactive:
-        query = query.filter(Room.is_active.is_(True))
-    rooms = query.order_by(Room.name).all()
-    return render_template("rooms/list.html", rooms=rooms, show_inactive=show_inactive)
-
-
-@rooms_bp.route("/devices")
-@admin_required
-def devices():
+def settings_index():
     rooms = Room.query.order_by(Room.name).all()
     public_base_url = current_app.config["PUBLIC_BASE_URL"]
     server_url = public_base_url or request.url_root.rstrip("/")
     looks_local = not public_base_url and (
         "127.0.0.1" in server_url or "localhost" in server_url
     )
+
+    show_inactive = request.args.get("show_inactive") == "1"
+    list_rooms = rooms if show_inactive else [r for r in rooms if r.is_active]
+
+    ad_groups = []
+    ad_groups_error = None
+    try:
+        ad_groups = list_groups(prefixes=current_app.config["AD_GROUP_PREFIXES"])
+    except LdapAuthError as exc:
+        ad_groups_error = str(exc)
+
+    active_tab = request.args.get("tab", "rooms")
+    if active_tab not in _SETTINGS_TABS:
+        active_tab = "rooms"
+
+    layout_settings = DisplayLayoutSettings.get_settings()
+    if layout_settings.logo_filename:
+        tablet_logo_url = url_for("static", filename=f"img/uploads/{layout_settings.logo_filename}")
+    else:
+        tablet_logo_url = url_for("static", filename="img/logo-motivabpo.png")
+
     return render_template(
-        "rooms/devices.html",
+        "rooms/settings.html",
+        active_tab=active_tab,
         rooms=rooms,
+        list_rooms=list_rooms,
+        show_inactive=show_inactive,
         server_url=server_url,
         looks_local=looks_local,
+        layout_settings=layout_settings,
+        tablet_logo_url=tablet_logo_url,
+        site_branding=SiteBrandingSettings.get_settings(),
+        ad_groups=ad_groups,
+        ad_groups_error=ad_groups_error,
+        ad_group_prefixes=current_app.config["AD_GROUP_PREFIXES"],
+        allowed_report_group_cns=set(ReportViewerGroup.allowed_cns()),
     )
+
+
+@rooms_bp.route("/layout", methods=["POST"])
+@admin_required
+def update_layout_config():
+    settings = DisplayLayoutSettings.get_settings()
+
+    for field in _LAYOUT_COLOR_FIELDS:
+        value = (request.form.get(field) or "").strip()
+        if not _HEX_COLOR_RE.match(value):
+            flash("Cor inválida: use o formato #RRGGBB.", "danger")
+            return redirect(url_for("rooms.settings_index", tab="layout"))
+        setattr(settings, field, value.upper())
+
+    agenda_position = request.form.get("agenda_position", settings.agenda_position)
+    if agenda_position in DisplayLayoutSettings.AGENDA_POSITIONS:
+        settings.agenda_position = agenda_position
+
+    button_position = request.form.get("button_position", settings.button_position)
+    if button_position in DisplayLayoutSettings.BUTTON_POSITIONS:
+        settings.button_position = button_position
+
+    logo_file = request.files.get("logo")
+    if logo_file and logo_file.filename:
+        try:
+            new_filename = save_uploaded_logo(logo_file)
+        except InvalidLogoFileError as exc:
+            flash(str(exc), "danger")
+            return redirect(url_for("rooms.settings_index", tab="layout"))
+        delete_logo_file(settings.logo_filename)
+        settings.logo_filename = new_filename
+
+    settings.show_logo = "show_logo" in request.form
+    settings.show_tags = "show_tags" in request.form
+    settings.show_video_icon = "show_video_icon" in request.form
+    settings.show_schedule_hint = "show_schedule_hint" in request.form
+    settings.updated_by = current_user.username
+    db.session.commit()
+    flash("Layout do painel atualizado.", "success")
+    return redirect(url_for("rooms.settings_index", tab="layout"))
+
+
+@rooms_bp.route("/layout/reset", methods=["POST"])
+@admin_required
+def reset_layout_config():
+    settings = DisplayLayoutSettings.get_settings()
+    delete_logo_file(settings.logo_filename)
+    settings.reset_to_defaults()
+    settings.updated_by = current_user.username
+    db.session.commit()
+    flash("Layout do painel restaurado para o padrão.", "success")
+    return redirect(url_for("rooms.settings_index", tab="layout"))
+
+
+_BRANDING_COLOR_FIELDS = ("primary_color", "secondary_color")
+
+
+@rooms_bp.route("/branding", methods=["POST"])
+@admin_required
+def update_site_branding():
+    settings = SiteBrandingSettings.get_settings()
+
+    for field in _BRANDING_COLOR_FIELDS:
+        value = (request.form.get(field) or "").strip()
+        if not _HEX_COLOR_RE.match(value):
+            flash("Cor inválida: use o formato #RRGGBB.", "danger")
+            return redirect(url_for("rooms.settings_index", tab="layout"))
+        setattr(settings, field, value.upper())
+
+    logo_file = request.files.get("logo")
+    if logo_file and logo_file.filename:
+        try:
+            new_filename = save_uploaded_logo(logo_file)
+        except InvalidLogoFileError as exc:
+            flash(str(exc), "danger")
+            return redirect(url_for("rooms.settings_index", tab="layout"))
+        delete_logo_file(settings.logo_filename)
+        settings.logo_filename = new_filename
+
+    icon_file = request.files.get("icon")
+    if icon_file and icon_file.filename:
+        try:
+            new_icon_filename = save_uploaded_logo(icon_file)
+        except InvalidLogoFileError as exc:
+            flash(str(exc), "danger")
+            return redirect(url_for("rooms.settings_index", tab="layout"))
+        delete_logo_file(settings.icon_filename)
+        settings.icon_filename = new_icon_filename
+
+    settings.updated_by = current_user.username
+    db.session.commit()
+    flash("Identidade visual do site atualizada.", "success")
+    return redirect(url_for("rooms.settings_index", tab="layout"))
+
+
+@rooms_bp.route("/branding/reset", methods=["POST"])
+@admin_required
+def reset_site_branding():
+    settings = SiteBrandingSettings.get_settings()
+    delete_logo_file(settings.logo_filename)
+    delete_logo_file(settings.icon_filename)
+    settings.reset_to_defaults()
+    settings.updated_by = current_user.username
+    db.session.commit()
+    flash("Identidade visual do site restaurada para o padrão.", "success")
+    return redirect(url_for("rooms.settings_index", tab="layout"))
 
 
 def _split_equipment(equipment_notes):
@@ -335,7 +471,7 @@ def new_room():
         db.session.add(room)
         db.session.commit()
         flash(f"Sala '{room.name}' criada com sucesso.", "success")
-        return redirect(url_for("rooms.list_rooms"))
+        return redirect(url_for("rooms.settings_index", tab="rooms"))
     return render_template("rooms/form.html", form=form, room=None)
 
 
@@ -359,34 +495,12 @@ def edit_room(room_id):
         _apply_room_form(room, form)
         db.session.commit()
         flash(f"Sala '{room.name}' atualizada.", "success")
-        return redirect(url_for("rooms.list_rooms"))
+        return redirect(url_for("rooms.settings_index", tab="rooms"))
 
     return render_template("rooms/form.html", form=form, room=room)
 
 
 # --- Permissão de agendamento por grupo AD (aba "Permissões", admin-only) ---
-
-
-@rooms_bp.route("/permissions")
-@admin_required
-def permissions_index():
-    rooms = Room.query.order_by(Room.name).all()
-
-    ad_groups = []
-    ad_groups_error = None
-    try:
-        ad_groups = list_groups(prefixes=current_app.config["AD_GROUP_PREFIXES"])
-    except LdapAuthError as exc:
-        ad_groups_error = str(exc)
-
-    return render_template(
-        "rooms/permissions_index.html",
-        rooms=rooms,
-        ad_groups=ad_groups,
-        ad_groups_error=ad_groups_error,
-        ad_group_prefixes=current_app.config["AD_GROUP_PREFIXES"],
-        allowed_report_group_cns=set(ReportViewerGroup.allowed_cns()),
-    )
 
 
 @rooms_bp.route("/permissions/relatorios", methods=["POST"])
@@ -407,7 +521,7 @@ def update_report_viewer_groups():
         flash("Grupos com acesso ao relatório atualizados.", "success")
     else:
         flash("Nenhum grupo selecionado: só administradores veem o relatório.", "success")
-    return redirect(url_for("rooms.permissions_index"))
+    return redirect(url_for("rooms.settings_index", tab="permissions"))
 
 
 @rooms_bp.route("/<int:room_id>/permissions")
@@ -460,7 +574,7 @@ def delete_room(room_id):
     room.is_active = False
     db.session.commit()
     flash(f"Sala '{room.name}' desativada.", "info")
-    return redirect(url_for("rooms.list_rooms"))
+    return redirect(url_for("rooms.settings_index", tab="rooms"))
 
 
 @rooms_bp.route("/<int:room_id>/display-token/regenerate", methods=["POST"])

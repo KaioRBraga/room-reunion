@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../theme/app_colors.dart';
+
 typedef PinBookingSubmit = Future<void> Function({
   required String username,
   required String pin,
@@ -18,6 +20,10 @@ Future<void> showPinBookingSheet({
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
+    backgroundColor: AppColors.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
     builder: (context) => _PinBookingForm(start: start, end: end, onSubmit: onSubmit),
   );
 }
@@ -114,6 +120,27 @@ class _PinBookingFormState extends State<_PinBookingForm> {
     }
   }
 
+  InputDecoration _decoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: AppColors.textMuted),
+      filled: true,
+      fillColor: AppColors.surfaceAlt,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: AppColors.border),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: AppColors.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final timeFormat = DateFormat('HH:mm');
@@ -121,7 +148,7 @@ class _PinBookingFormState extends State<_PinBookingForm> {
       padding: EdgeInsets.only(
         left: 20,
         right: 20,
-        top: 20,
+        top: 12,
         bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
       child: SingleChildScrollView(
@@ -131,25 +158,38 @@ class _PinBookingFormState extends State<_PinBookingForm> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
               Text(
                 'Agendar ${timeFormat.format(widget.start)} - ${timeFormat.format(widget.end)}',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                style: const TextStyle(color: AppColors.text, fontWeight: FontWeight.bold, fontSize: 18),
               ),
               const SizedBox(height: 4),
               const Text(
                 'Apenas para hoje. Use seu usuário e PIN cadastrados no perfil do site.',
-                style: TextStyle(color: Colors.black54, fontSize: 12),
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12),
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _usernameController,
-                decoration: const InputDecoration(labelText: 'Usuário'),
+                style: const TextStyle(color: AppColors.text),
+                decoration: _decoration('Usuário'),
                 validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe o usuário' : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _pinController,
-                decoration: const InputDecoration(labelText: 'PIN'),
+                style: const TextStyle(color: AppColors.text),
+                decoration: _decoration('PIN'),
                 keyboardType: TextInputType.number,
                 obscureText: true,
                 maxLength: 6,
@@ -158,37 +198,46 @@ class _PinBookingFormState extends State<_PinBookingForm> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _titleController,
-                decoration: const InputDecoration(labelText: 'Título da reunião'),
+                style: const TextStyle(color: AppColors.text),
+                decoration: _decoration('Título da reunião'),
                 validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe um título' : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _attendeesController,
-                decoration: const InputDecoration(labelText: 'Número de participantes'),
+                style: const TextStyle(color: AppColors.text),
+                decoration: _decoration('Número de participantes'),
                 keyboardType: TextInputType.number,
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _virtualUrlController,
-                decoration: const InputDecoration(labelText: 'URL da sala virtual (opcional)'),
+                style: const TextStyle(color: AppColors.text),
+                decoration: _decoration('URL da sala virtual (opcional)'),
                 keyboardType: TextInputType.url,
               ),
               if (_error != null) ...[
                 const SizedBox(height: 12),
-                Text(_error!, style: const TextStyle(color: Colors.red)),
+                Text(_error!, style: const TextStyle(color: Colors.redAccent)),
               ],
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: _busy ? null : _submit,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
                   child: _busy
                       ? const SizedBox(
                           height: 18,
                           width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Agendar'),
+                      : const Text('Agendar', style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
             ],

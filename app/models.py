@@ -113,6 +113,135 @@ class Room(db.Model):
         return f"<Room {self.name}>"
 
 
+class DisplayLayoutSettings(db.Model):
+    """Configuração global de aparência do painel/tablet (aba "Layout do painel",
+    visível só para admin). Singleton (uma única linha, id=1) - o layout é o
+    mesmo para todos os painéis, a personalização não é por sala.
+    """
+
+    __tablename__ = "display_layout_settings"
+
+    DEFAULT_COLOR_AVAILABLE = "#1F9D55"
+    DEFAULT_COLOR_STARTING_SOON = "#E0A100"
+    DEFAULT_COLOR_IN_USE = "#DC3545"
+    DEFAULT_AGENDA_POSITION = "below_status"
+    DEFAULT_BUTTON_POSITION = "status_banner"
+
+    AGENDA_POSITIONS = ("below_status", "above_status")
+    BUTTON_POSITIONS = ("status_banner", "top_right")
+
+    id = db.Column(db.Integer, primary_key=True)
+    show_logo = db.Column(db.Boolean, default=True, nullable=False)
+    show_tags = db.Column(db.Boolean, default=True, nullable=False)
+    show_video_icon = db.Column(db.Boolean, default=True, nullable=False)
+    show_schedule_hint = db.Column(db.Boolean, default=True, nullable=False)
+    color_available = db.Column(db.String(7), default=DEFAULT_COLOR_AVAILABLE, nullable=False)
+    color_starting_soon = db.Column(db.String(7), default=DEFAULT_COLOR_STARTING_SOON, nullable=False)
+    color_in_use = db.Column(db.String(7), default=DEFAULT_COLOR_IN_USE, nullable=False)
+    # Posição da agenda do dia em relação à faixa de status, e do botão de ação
+    # principal (dentro da faixa de status ou isolado no canto superior
+    # direito) - arranjos pré-definidos, editados via o botão "caneta" na aba
+    # "Layout do painel" > "Tablet".
+    agenda_position = db.Column(db.String(20), default=DEFAULT_AGENDA_POSITION, nullable=False)
+    button_position = db.Column(db.String(20), default=DEFAULT_BUTTON_POSITION, nullable=False)
+    # Logo específica do painel/tablet (diferente da logo do site em
+    # SiteBrandingSettings) - None usa o asset padrão empacotado no app Flutter.
+    logo_filename = db.Column(db.String(255), nullable=True)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+    updated_by = db.Column(db.String(120), nullable=True)
+
+    @staticmethod
+    def get_settings():
+        settings = db.session.get(DisplayLayoutSettings, 1)
+        if settings is None:
+            settings = DisplayLayoutSettings(id=1)
+            db.session.add(settings)
+            db.session.commit()
+        return settings
+
+    def reset_to_defaults(self):
+        self.show_logo = True
+        self.show_tags = True
+        self.show_video_icon = True
+        self.show_schedule_hint = True
+        self.color_available = self.DEFAULT_COLOR_AVAILABLE
+        self.color_starting_soon = self.DEFAULT_COLOR_STARTING_SOON
+        self.color_in_use = self.DEFAULT_COLOR_IN_USE
+        self.agenda_position = self.DEFAULT_AGENDA_POSITION
+        self.button_position = self.DEFAULT_BUTTON_POSITION
+        self.logo_filename = None
+
+    def to_payload(self):
+        return {
+            "show_logo": self.show_logo,
+            "show_tags": self.show_tags,
+            "show_video_icon": self.show_video_icon,
+            "show_schedule_hint": self.show_schedule_hint,
+            "agenda_position": self.agenda_position,
+            "button_position": self.button_position,
+            "colors": {
+                "available": self.color_available,
+                "starting_soon": self.color_starting_soon,
+                "in_use": self.color_in_use,
+            },
+        }
+
+    def __repr__(self):
+        return "<DisplayLayoutSettings>"
+
+
+class SiteBrandingSettings(db.Model):
+    """Identidade visual do site (aba "Layout do painel" > "Site", admin-only):
+    logo, ícone (marca pequena/favicon), cor primária e secundária. Singleton
+    (uma única linha, id=1), aplicada a todas as páginas via context
+    processor (`app/__init__.py`).
+    """
+
+    __tablename__ = "site_branding_settings"
+
+    DEFAULT_PRIMARY_COLOR = "#007BBB"
+    DEFAULT_SECONDARY_COLOR = "#0B2545"
+
+    id = db.Column(db.Integer, primary_key=True)
+    logo_filename = db.Column(db.String(255), nullable=True)
+    icon_filename = db.Column(db.String(255), nullable=True)
+    primary_color = db.Column(db.String(7), default=DEFAULT_PRIMARY_COLOR, nullable=False)
+    secondary_color = db.Column(db.String(7), default=DEFAULT_SECONDARY_COLOR, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+    updated_by = db.Column(db.String(120), nullable=True)
+
+    @staticmethod
+    def get_settings():
+        settings = db.session.get(SiteBrandingSettings, 1)
+        if settings is None:
+            settings = SiteBrandingSettings(id=1)
+            db.session.add(settings)
+            db.session.commit()
+        return settings
+
+    def reset_to_defaults(self):
+        self.logo_filename = None
+        self.icon_filename = None
+        self.primary_color = self.DEFAULT_PRIMARY_COLOR
+        self.secondary_color = self.DEFAULT_SECONDARY_COLOR
+
+    @staticmethod
+    def _hex_to_rgb(hex_color):
+        h = hex_color.lstrip("#")
+        return ", ".join(str(int(h[i : i + 2], 16)) for i in (0, 2, 4))
+
+    @property
+    def primary_rgb(self):
+        return self._hex_to_rgb(self.primary_color)
+
+    @property
+    def secondary_rgb(self):
+        return self._hex_to_rgb(self.secondary_color)
+
+    def __repr__(self):
+        return "<SiteBrandingSettings>"
+
+
 class User(db.Model):
     """Cadastro local, alimentado a cada login bem-sucedido no AD.
 

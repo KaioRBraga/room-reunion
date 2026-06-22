@@ -1,0 +1,622 @@
+{% extends "base.html" %}
+{% block title %}Configurações - ReadyRoom{% endblock %}
+{% block content %}
+<h4 class="mb-3">Configurações</h4>
+
+<ul class="nav nav-tabs mb-3" id="settingsTabs">
+    <li class="nav-item">
+        <button class="nav-link {{ 'active' if active_tab == 'rooms' }}" data-bs-toggle="tab" data-bs-target="#tab-rooms" type="button">Lista de salas</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link {{ 'active' if active_tab == 'devices' }}" data-bs-toggle="tab" data-bs-target="#tab-devices" type="button">Dispositivos</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link {{ 'active' if active_tab == 'layout' }}" data-bs-toggle="tab" data-bs-target="#tab-layout" type="button">Layout do painel</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link {{ 'active' if active_tab == 'permissions' }}" data-bs-toggle="tab" data-bs-target="#tab-permissions" type="button">Permissões</button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <!-- ===== Lista de salas ===== -->
+    <div class="tab-pane fade {{ 'show active' if active_tab == 'rooms' }}" id="tab-rooms">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="d-flex gap-2">
+                {% if show_inactive %}
+                <a href="{{ url_for('rooms.settings_index', tab='rooms') }}" class="btn btn-outline-secondary btn-sm">Ocultar inativas</a>
+                {% else %}
+                <a href="{{ url_for('rooms.settings_index', tab='rooms', show_inactive=1) }}" class="btn btn-outline-secondary btn-sm">Mostrar inativas</a>
+                {% endif %}
+            </div>
+            <a href="{{ url_for('rooms.new_room') }}" class="btn btn-primary">+ Nova sala</a>
+        </div>
+
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Capacidade</th>
+                    <th>Localização</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for room in list_rooms %}
+                <tr>
+                    <td>{{ room.name }}</td>
+                    <td>{{ room.capacity }}</td>
+                    <td>{{ room.location or "-" }}</td>
+                    <td>
+                        {% if room.is_active %}
+                        <span class="badge bg-success">Ativa</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Inativa</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <a href="{{ url_for('rooms.edit_room', room_id=room.id) }}" class="btn btn-sm btn-outline-primary">Editar</a>
+                        {% if room.is_active %}
+                        <form action="{{ url_for('rooms.delete_room', room_id=room.id) }}" method="post" class="d-inline" onsubmit="return confirm('Desativar esta sala?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Desativar</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="text-center text-muted">Nenhuma sala cadastrada.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ===== Dispositivos ===== -->
+    <div class="tab-pane fade {{ 'show active' if active_tab == 'devices' }}" id="tab-devices">
+        <p class="text-muted small">
+            Escaneie o QR code no app do painel (tela de configuração, botão "Escanear QR code")
+            para conectar o tablet/celular a uma sala sem digitar nada. Cada QR encerra a função
+            do anterior ao renovar o token.
+        </p>
+
+        {% if looks_local %}
+        <div class="alert alert-warning">
+            Você está acessando esta página por <code>{{ server_url }}</code>. Os QR codes abaixo só vão
+            funcionar em painéis que rodem nesta mesma máquina - tablets e celulares não conseguem
+            alcançar esse endereço. Acesse esta página pelo IP de rede do servidor, ou defina
+            <code>PUBLIC_BASE_URL</code> no <code>.env</code> para corrigir isso de vez.
+        </div>
+        {% endif %}
+
+        <div class="row g-3">
+            {% for room in rooms %}
+            <div class="col-sm-6 col-md-4 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title mb-1">{{ room.name }}</h6>
+                        <p class="text-muted small mb-3">
+                            {{ room.capacity }} lugar{{ "es" if room.capacity != 1 else "" }}
+                            {% if not room.is_active %}<br><span class="badge bg-secondary">Inativa</span>{% endif %}
+                        </p>
+
+                        {% if not room.is_active %}
+                        <p class="text-muted small">Sala inativa - reative-a antes de conectar um painel.</p>
+                        {% elif room.display_token %}
+                        <div class="qr-box mx-auto mb-2"
+                             id="qr-{{ room.id }}"
+                             data-payload='{{ {"url": server_url, "token": room.display_token} | tojson }}'></div>
+                        <input type="text" class="form-control form-control-sm text-center mb-2"
+                               value="{{ room.display_token }}" readonly onclick="this.select()">
+                        {% else %}
+                        <p class="text-muted small">Nenhum token gerado ainda.</p>
+                        {% endif %}
+
+                        {% if room.is_active %}
+                        <form method="post"
+                              action="{{ url_for('rooms.regenerate_display_token', room_id=room.id) }}"
+                              onsubmit="return confirm('Gerar um novo token invalida o atual - o painel já configurado vai parar de funcionar até ser pareado de novo. Continuar?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="next" value="{{ url_for('rooms.settings_index', tab='devices') }}">
+                            <button type="submit" class="btn btn-outline-secondary btn-sm">
+                                {{ "Renovar token" if room.display_token else "Gerar token" }}
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <p class="text-muted">Nenhuma sala cadastrada.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- ===== Layout do painel ===== -->
+    <div class="tab-pane fade {{ 'show active' if active_tab == 'layout' }}" id="tab-layout">
+        <ul class="nav nav-pills mb-3" id="layoutSubTabs">
+            <li class="nav-item">
+                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#layout-site" type="button">Site</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#layout-tablet" type="button">Tablet</button>
+            </li>
+        </ul>
+
+        <div class="tab-content">
+            <!-- ----- Site ----- -->
+            <div class="tab-pane fade show active" id="layout-site">
+                <p class="text-muted small">
+                    Ícone, logo e cores usadas no site (login, barra lateral, botões, links e
+                    gráficos de relatório). A mudança aparece pra todo mundo a partir do próximo
+                    carregamento da página.
+                </p>
+
+                <div class="row g-4">
+                    <div class="col-lg-6">
+                        <form method="post" action="{{ url_for('rooms.update_site_branding') }}" enctype="multipart/form-data" id="siteBrandingForm">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <h6 class="card-title mb-3">Ícone</h6>
+                                    <div class="d-flex align-items-center gap-3 mb-2">
+                                        <img src="{{ site_icon_url }}" alt=""
+                                             style="max-height: 32px; max-width: 32px; object-fit: contain; background: var(--rr-ink); border-radius: 8px; padding: 6px;">
+                                        <input type="file" class="form-control" name="icon" id="iconInput" accept=".png,.jpg,.jpeg,.webp">
+                                    </div>
+                                    <p class="text-muted small mb-0">PNG, JPG ou WEBP. Marca pequena ao lado de "ReadyRoom" na barra lateral e ícone da aba do navegador.</p>
+                                </div>
+                            </div>
+
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <h6 class="card-title mb-3">Logo</h6>
+                                    <div class="d-flex align-items-center gap-3 mb-2">
+                                        <img src="{{ site_logo_url }}" alt=""
+                                             style="max-height: 48px; max-width: 140px; object-fit: contain; background: var(--rr-ink); border-radius: 8px; padding: 6px;">
+                                        <input type="file" class="form-control" name="logo" id="logoInput" accept=".png,.jpg,.jpeg,.webp">
+                                    </div>
+                                    <p class="text-muted small mb-0">PNG, JPG ou WEBP. Aparece no topo do login e no rodapé da barra lateral.</p>
+                                </div>
+                            </div>
+
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <h6 class="card-title mb-3">Cores</h6>
+                                    <div class="mb-3 d-flex align-items-center gap-3">
+                                        <input type="color" class="form-control form-control-color" id="site_primary_color_picker" value="{{ site_branding.primary_color }}" title="Primária">
+                                        <input type="text" class="form-control" name="primary_color" id="site_primary_color" value="{{ site_branding.primary_color }}" maxlength="7">
+                                        <label class="form-label mb-0 text-muted small ms-auto">Cor primária</label>
+                                    </div>
+                                    <div class="mb-0 d-flex align-items-center gap-3">
+                                        <input type="color" class="form-control form-control-color" id="site_secondary_color_picker" value="{{ site_branding.secondary_color }}" title="Secundária">
+                                        <input type="text" class="form-control" name="secondary_color" id="site_secondary_color" value="{{ site_branding.secondary_color }}" maxlength="7">
+                                        <label class="form-label mb-0 text-muted small ms-auto">Cor secundária</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary">Salvar</button>
+                        </form>
+                        <form method="post" action="{{ url_for('rooms.reset_site_branding') }}" class="d-inline"
+                              onsubmit="return confirm('Restaurar logo e cores do site para o padrão original?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-outline-secondary mt-2">Restaurar padrão</button>
+                        </form>
+                    </div>
+
+                    <div class="col-lg-6">
+                        <h6 class="text-muted small mb-2">Pré-visualização</h6>
+                        <div class="site-preview-shell">
+                            <div class="site-preview-sidebar">
+                                <div class="site-preview-brand">
+                                    <img src="{{ site_icon_url }}" alt="" id="sitePreviewIcon" class="site-preview-icon">
+                                    <span>ReadyRoom</span>
+                                </div>
+                                <div class="site-preview-nav-item active" id="sitePreviewActiveNav">Calendário</div>
+                                <div class="site-preview-nav-item">Salas</div>
+                                <div class="site-preview-nav-item">Relatórios</div>
+                                <div class="site-preview-logo-row">
+                                    <img src="{{ site_logo_url }}" alt="" id="sitePreviewLogo">
+                                </div>
+                            </div>
+                            <div class="site-preview-main">
+                                <div class="site-preview-card">
+                                    <div class="site-preview-card-title">Próxima reunião</div>
+                                    <button type="button" class="site-preview-btn" id="sitePreviewBtn" disabled>Nova reserva</button>
+                                    <div class="site-preview-bar" id="sitePreviewBar"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ----- Tablet ----- -->
+            <div class="tab-pane fade" id="layout-tablet">
+                <p class="text-muted small">
+                    Controla a aparência do painel/tablet das salas: cores de cada status e quais elementos
+                    aparecem na tela. A mudança vale para todos os painéis na próxima atualização (até 15s).
+                </p>
+
+                <form method="post" action="{{ url_for('rooms.update_layout_config') }}" enctype="multipart/form-data" id="layoutForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="row g-4">
+                        <div class="col-lg-6">
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <h6 class="card-title mb-3">Cores por status</h6>
+                                    <div class="mb-3 d-flex align-items-center gap-3">
+                                        <input type="color" class="form-control form-control-color" id="color_available_picker" value="{{ layout_settings.color_available }}" title="Disponível">
+                                        <input type="text" class="form-control" name="color_available" id="color_available" value="{{ layout_settings.color_available }}" maxlength="7">
+                                        <label class="form-label mb-0 text-muted small ms-auto">Disponível</label>
+                                    </div>
+                                    <div class="mb-3 d-flex align-items-center gap-3">
+                                        <input type="color" class="form-control form-control-color" id="color_starting_soon_picker" value="{{ layout_settings.color_starting_soon }}" title="Começando">
+                                        <input type="text" class="form-control" name="color_starting_soon" id="color_starting_soon" value="{{ layout_settings.color_starting_soon }}" maxlength="7">
+                                        <label class="form-label mb-0 text-muted small ms-auto">Começando</label>
+                                    </div>
+                                    <div class="mb-0 d-flex align-items-center gap-3">
+                                        <input type="color" class="form-control form-control-color" id="color_in_use_picker" value="{{ layout_settings.color_in_use }}" title="Em uso">
+                                        <input type="text" class="form-control" name="color_in_use" id="color_in_use" value="{{ layout_settings.color_in_use }}" maxlength="7">
+                                        <label class="form-label mb-0 text-muted small ms-auto">Em uso</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <h6 class="card-title mb-3">Elementos visíveis</h6>
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" role="switch" name="show_logo" id="show_logo" {{ "checked" if layout_settings.show_logo }}>
+                                        <label class="form-check-label" for="show_logo">Logo da empresa no topo</label>
+                                    </div>
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" role="switch" name="show_tags" id="show_tags" {{ "checked" if layout_settings.show_tags }}>
+                                        <label class="form-check-label" for="show_tags">Tags de capacidade/equipamentos junto do nome da sala</label>
+                                    </div>
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" role="switch" name="show_video_icon" id="show_video_icon" {{ "checked" if layout_settings.show_video_icon }}>
+                                        <label class="form-check-label" for="show_video_icon">Ícone de videoconferência na faixa de status</label>
+                                    </div>
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" role="switch" name="show_schedule_hint" id="show_schedule_hint" {{ "checked" if layout_settings.show_schedule_hint }}>
+                                        <label class="form-check-label" for="show_schedule_hint">Dica de toque na agenda (quando a sala está disponível)</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="card mb-3 d-none" id="tabletAdvancedPanel">
+                                <div class="card-body">
+                                    <h6 class="card-title mb-3">Posições e logo do tablet</h6>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted" for="agenda_position">Posição da agenda do dia</label>
+                                        <select class="form-select" name="agenda_position" id="agenda_position">
+                                            <option value="below_status" {{ "selected" if layout_settings.agenda_position == "below_status" }}>Abaixo da faixa de status</option>
+                                            <option value="above_status" {{ "selected" if layout_settings.agenda_position == "above_status" }}>Acima da faixa de status</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label small text-muted" for="button_position">Posição do botão de ação</label>
+                                        <select class="form-select" name="button_position" id="button_position">
+                                            <option value="status_banner" {{ "selected" if layout_settings.button_position == "status_banner" }}>Dentro da faixa de status</option>
+                                            <option value="top_right" {{ "selected" if layout_settings.button_position == "top_right" }}>Canto superior direito</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-0">
+                                        <label class="form-label small text-muted d-block" for="tabletLogoInput">Logo do tablet</label>
+                                        <div class="d-flex align-items-center gap-3">
+                                            <img src="{{ tablet_logo_url }}" alt="" id="previewTabletLogoThumb"
+                                                 style="max-height: 40px; max-width: 120px; object-fit: contain; background: var(--rr-ink); border-radius: 8px; padding: 6px;">
+                                            <input type="file" class="form-control" name="logo" id="tabletLogoInput" accept=".png,.jpg,.jpeg,.webp">
+                                        </div>
+                                        <p class="text-muted small mb-0 mt-1">PNG, JPG ou WEBP. Sem upload, usa a logo padrão do app.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary">Salvar</button>
+                        </div>
+
+                        <div class="col-lg-6">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="text-muted small mb-0">Pré-visualização</h6>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="tabletAdvancedToggle">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="me-1">
+                                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path>
+                                        <path d="m15 5 4 4"></path>
+                                    </svg>
+                                    Editar posições
+                                </button>
+                            </div>
+                            <select class="form-select form-select-sm mb-3" id="previewStatus" style="max-width: 220px;">
+                                <option value="available">Disponível</option>
+                                <option value="starting_soon">Começando</option>
+                                <option value="in_use">Em uso</option>
+                            </select>
+
+                            <div class="layout-preview-shell">
+                                <div class="layout-preview-topbar" id="previewLogoRow">
+                                    <img src="{{ tablet_logo_url }}" alt="" class="layout-preview-logo" id="previewTabletLogo">
+                                </div>
+                                <div class="layout-preview-roomrow">
+                                    <span class="layout-preview-roomname">Sala Exemplo</span>
+                                    <span class="layout-preview-tags" id="previewTags">
+                                        <span class="layout-preview-tag">8 pessoas</span>
+                                        <span class="layout-preview-tag">TV</span>
+                                    </span>
+                                </div>
+                                <div class="layout-preview-corner-action" id="previewCornerAction" style="display: none;">
+                                    <button type="button" class="layout-preview-action-sm" id="previewCornerActionBtn" disabled>Iniciar agora</button>
+                                </div>
+                                <div class="layout-preview-agenda-block" id="previewAgendaTop" style="display: none;">Agenda do dia</div>
+                                <div class="layout-preview-banner" id="previewBanner">
+                                    <div class="layout-preview-status">
+                                        <span id="previewStatusLabel">Disponível</span>
+                                        <span class="layout-preview-video" id="previewVideoIcon">&#128249;</span>
+                                    </div>
+                                    <div class="layout-preview-meeting">Próxima: Reunião de exemplo &middot; 14:00 - 15:00</div>
+                                    <div class="layout-preview-hint" id="previewHint">Toque um horário livre na agenda para reservar</div>
+                                    <button type="button" class="layout-preview-action" id="previewAction" disabled>Iniciar agora</button>
+                                </div>
+                                <div class="layout-preview-agenda-block" id="previewAgendaBottom">Agenda do dia</div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+                <form method="post" action="{{ url_for('rooms.reset_layout_config') }}" class="d-inline"
+                      onsubmit="return confirm('Restaurar as cores, elementos e posições do painel para o padrão original?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-outline-secondary mt-2">Restaurar padrão</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Permissões ===== -->
+    <div class="tab-pane fade {{ 'show active' if active_tab == 'permissions' }}" id="tab-permissions">
+        <ul class="nav nav-tabs mb-3" id="permissionsTabs">
+            <li class="nav-item">
+                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-salas" type="button">Agendamento de salas</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-relatorios" type="button">Relatórios</button>
+            </li>
+        </ul>
+
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="tab-salas">
+                <p class="text-muted small">
+                    Por padrão, qualquer usuário logado pode reservar qualquer sala ativa. Aqui você
+                    restringe quais salas só podem ser agendadas por quem pertence a determinados
+                    grupos do AD (ex: sala VIP só para o grupo da diretoria, sala de feedback aberta a todos).
+                </p>
+
+                <table class="table table-striped align-middle">
+                    <thead>
+                        <tr>
+                            <th>Sala</th>
+                            <th>Status</th>
+                            <th>Grupos com permissão</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for room in rooms %}
+                        <tr>
+                            <td>{{ room.name }}</td>
+                            <td>
+                                {% if room.is_active %}
+                                <span class="badge bg-success">Ativa</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inativa</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% set groups = room.allowed_group_cns %}
+                                {% if groups %}
+                                {% for cn in groups %}
+                                <span class="badge bg-info text-dark">{{ cn }}</span>
+                                {% endfor %}
+                                {% else %}
+                                <span class="badge bg-light text-dark border">Aberta a todos</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <a href="{{ url_for('rooms.room_permissions', room_id=room.id) }}" class="btn btn-sm btn-outline-primary">Gerenciar grupos</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted">Nenhuma sala cadastrada.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="tab-pane fade" id="tab-relatorios">
+                <p class="text-muted small">
+                    Por padrão, só administradores veem o relatório de estatísticas de reservas.
+                    Selecione um ou mais grupos do AD para liberar o acesso também a quem
+                    pertence a algum deles (vale para todas as salas, não é por sala).
+                </p>
+
+                {% if ad_groups_error %}
+                <div class="alert alert-warning col-md-6">{{ ad_groups_error }}</div>
+                {% elif not ad_groups %}
+                <p class="text-muted col-md-6">
+                    Nenhum grupo encontrado no AD{{ " com os prefixos %s" % (ad_group_prefixes | join(", ")) if ad_group_prefixes else "" }}.
+                </p>
+                {% else %}
+                <form method="post" action="{{ url_for('rooms.update_report_viewer_groups') }}" class="col-md-6 mb-3">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="text" id="reportGroupFilterInput" class="form-control form-control-sm mb-2"
+                           placeholder="Filtrar {{ ad_groups | length }} grupos por nome...">
+                    <div id="reportGroupCheckboxList" class="mb-2" style="max-height: 360px; overflow-y: auto;">
+                        {% for group in ad_groups %}
+                        <div class="form-check report-group-checkbox-item">
+                            <input class="form-check-input" type="checkbox" name="group_cns" value="{{ group.cn }}"
+                                   id="report-group-{{ loop.index }}" {{ "checked" if group.cn in allowed_report_group_cns else "" }}>
+                            <label class="form-check-label" for="report-group-{{ loop.index }}">
+                                {{ group.cn }}{% if group.description %} <span class="text-muted small">- {{ group.description }}</span>{% endif %}
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm">Salvar grupos</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script>
+document.querySelectorAll(".qr-box[data-payload]").forEach(function (el) {
+    new QRCode(el, { text: el.dataset.payload, width: 160, height: 160 });
+});
+
+document.getElementById("reportGroupFilterInput")?.addEventListener("input", function () {
+    const q = this.value.trim().toLowerCase();
+    document.querySelectorAll("#reportGroupCheckboxList .report-group-checkbox-item").forEach(function (item) {
+        item.classList.toggle("d-none", !item.textContent.toLowerCase().includes(q));
+    });
+});
+
+(function () {
+    const colorPairs = [
+        ["site_primary_color", "site_primary_color_picker"],
+        ["site_secondary_color", "site_secondary_color_picker"],
+    ];
+    colorPairs.forEach(function ([textId, pickerId]) {
+        const textEl = document.getElementById(textId);
+        const pickerEl = document.getElementById(pickerId);
+        pickerEl.addEventListener("input", function () {
+            textEl.value = pickerEl.value;
+            updateSitePreview();
+        });
+        textEl.addEventListener("input", function () {
+            if (/^#[0-9a-fA-F]{6}$/.test(textEl.value)) pickerEl.value = textEl.value;
+            updateSitePreview();
+        });
+    });
+
+    const activeNav = document.getElementById("sitePreviewActiveNav");
+    const btn = document.getElementById("sitePreviewBtn");
+    const bar = document.getElementById("sitePreviewBar");
+
+    function updateSitePreview() {
+        const primary = document.getElementById("site_primary_color").value;
+        const secondary = document.getElementById("site_secondary_color").value;
+        activeNav.style.backgroundColor = primary;
+        btn.style.backgroundColor = primary;
+        bar.style.backgroundColor = secondary;
+    }
+
+    function previewFileInto(inputId, imgId) {
+        document.getElementById(inputId)?.addEventListener("change", function (e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function (ev) {
+                document.getElementById(imgId).src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+    previewFileInto("logoInput", "sitePreviewLogo");
+    previewFileInto("iconInput", "sitePreviewIcon");
+
+    updateSitePreview();
+})();
+
+(function () {
+    const colorPairs = [
+        ["color_available", "color_available_picker"],
+        ["color_starting_soon", "color_starting_soon_picker"],
+        ["color_in_use", "color_in_use_picker"],
+    ];
+    colorPairs.forEach(function ([textId, pickerId]) {
+        const textEl = document.getElementById(textId);
+        const pickerEl = document.getElementById(pickerId);
+        pickerEl.addEventListener("input", function () {
+            textEl.value = pickerEl.value;
+            updatePreview();
+        });
+        textEl.addEventListener("input", function () {
+            if (/^#[0-9a-fA-F]{6}$/.test(textEl.value)) pickerEl.value = textEl.value;
+            updatePreview();
+        });
+    });
+
+    const statusLabels = { available: "Disponível", starting_soon: "Começando", in_use: "Em uso" };
+    const statusActions = { available: "Iniciar agora", starting_soon: "Fazer check-in", in_use: "Encerrar reunião" };
+
+    const previewStatus = document.getElementById("previewStatus");
+    const banner = document.getElementById("previewBanner");
+    const statusLabel = document.getElementById("previewStatusLabel");
+    const action = document.getElementById("previewAction");
+    const cornerAction = document.getElementById("previewCornerAction");
+    const cornerActionBtn = document.getElementById("previewCornerActionBtn");
+    const hint = document.getElementById("previewHint");
+    const logoRow = document.getElementById("previewLogoRow");
+    const tags = document.getElementById("previewTags");
+    const videoIcon = document.getElementById("previewVideoIcon");
+    const agendaTop = document.getElementById("previewAgendaTop");
+    const agendaBottom = document.getElementById("previewAgendaBottom");
+    const agendaPositionSelect = document.getElementById("agenda_position");
+    const buttonPositionSelect = document.getElementById("button_position");
+
+    function updatePreview() {
+        const status = previewStatus.value;
+        const color = document.getElementById("color_" + status).value;
+
+        banner.style.backgroundColor = color;
+        statusLabel.textContent = statusLabels[status];
+
+        const isCorner = buttonPositionSelect.value === "top_right";
+        action.style.display = isCorner ? "none" : "";
+        cornerAction.style.display = isCorner ? "" : "none";
+        action.textContent = statusActions[status];
+        action.style.color = color;
+        cornerActionBtn.textContent = statusActions[status];
+        cornerActionBtn.style.color = color;
+
+        const agendaAbove = agendaPositionSelect.value === "above_status";
+        agendaTop.style.display = agendaAbove ? "" : "none";
+        agendaBottom.style.display = agendaAbove ? "none" : "";
+
+        logoRow.style.display = document.getElementById("show_logo").checked ? "" : "none";
+        tags.style.display = document.getElementById("show_tags").checked ? "" : "none";
+        videoIcon.style.display = document.getElementById("show_video_icon").checked ? "" : "none";
+        hint.style.display = (status === "available" && document.getElementById("show_schedule_hint").checked) ? "" : "none";
+    }
+
+    previewStatus.addEventListener("change", updatePreview);
+    agendaPositionSelect.addEventListener("change", updatePreview);
+    buttonPositionSelect.addEventListener("change", updatePreview);
+    document.querySelectorAll('#layoutForm input[type="checkbox"]').forEach(function (el) {
+        el.addEventListener("change", updatePreview);
+    });
+    updatePreview();
+
+    document.getElementById("tabletAdvancedToggle").addEventListener("click", function () {
+        document.getElementById("tabletAdvancedPanel").classList.toggle("d-none");
+    });
+
+    document.getElementById("tabletLogoInput").addEventListener("change", function (e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function (ev) {
+            document.getElementById("previewTabletLogo").src = ev.target.result;
+            document.getElementById("previewTabletLogoThumb").src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+})();
+</script>
+{% endblock %}

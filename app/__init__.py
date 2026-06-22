@@ -54,4 +54,19 @@ def create_app(config_class=Config):
             ),
         }
 
+    @app.context_processor
+    def inject_site_branding():
+        from app.models import SiteBrandingSettings
+
+        branding = SiteBrandingSettings.get_settings()
+        if branding.logo_filename:
+            logo_url = url_for("static", filename=f"img/uploads/{branding.logo_filename}")
+        else:
+            logo_url = url_for("static", filename="img/logo-motivabpo.png")
+        if branding.icon_filename:
+            icon_url = url_for("static", filename=f"img/uploads/{branding.icon_filename}")
+        else:
+            icon_url = url_for("static", filename="img/icon-motivabpo.png")
+        return {"site_branding": branding, "site_logo_url": logo_url, "site_icon_url": icon_url}
+
     return app

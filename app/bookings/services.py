@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta
 
-from flask import current_app
+from flask import current_app, url_for
 
 from app.extensions import db
-from app.models import Booking, BookingAttendee, Room, localnow
+from app.models import Booking, BookingAttendee, DisplayLayoutSettings, Room, localnow
 
 
 def _dedupe_emails(emails):
@@ -256,4 +256,20 @@ def get_display_status(room):
         "check_in_deadline": check_in_deadline.isoformat() if check_in_deadline else None,
         "today_schedule": [_booking_summary(b, now) for b in today_bookings],
         "server_time": now.isoformat(),
+        "layout": _layout_payload(),
     }
+
+
+def _layout_payload():
+    settings = DisplayLayoutSettings.get_settings()
+    payload = settings.to_payload()
+    payload["logo_url"] = (
+        url_for(
+            "static",
+            filename=f"img/uploads/{settings.logo_filename}",
+            _external=True,
+        )
+        if settings.logo_filename
+        else None
+    )
+    return payload

@@ -12,6 +12,9 @@ document.addEventListener("DOMContentLoaded", function () {
     let chartByRoom = null;
     let chartByOrganizer = null;
 
+    const secondaryColor = document.body.dataset.secondaryColor || "#0b2545";
+    const primaryColor = document.body.dataset.primaryColor || "#007bbb";
+
     function formatHour(isoString) {
         return new Date(isoString).toLocaleString("pt-BR", {
             day: "2-digit",
@@ -82,7 +85,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     {
                         label: "Reservas",
                         data: byRoom.map((r) => r.bookings_count),
-                        backgroundColor: "#2E8B45",
+                        backgroundColor: secondaryColor,
                     },
                 ],
             },
@@ -107,7 +110,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     {
                         label: "Reservas",
                         data: top.map((o) => o.bookings_count),
-                        backgroundColor: "#2B7DD9",
+                        backgroundColor: primaryColor,
                     },
                 ],
             },

@@ -53,7 +53,7 @@
         {{ form.is_active.label(class="form-check-label") }}
     </div>
     <button type="submit" class="btn btn-primary">Salvar</button>
-    <a href="{{ url_for('rooms.list_rooms') }}" class="btn btn-secondary">Cancelar</a>
+    <a href="{{ url_for('rooms.settings_index', tab='rooms') }}" class="btn btn-secondary">Cancelar</a>
 </form>
 
 {% if room %}
@@ -68,8 +68,8 @@
 <h5>Painel da sala (app Android)</h5>
 <p class="text-muted small">
     Token usado pelo tablet/painel desta sala para se conectar à API sem precisar de login AD.
-    Cole esse valor na tela de configuração do app, ou veja o QR code de pareamento na aba
-    <a href="{{ url_for('rooms.devices') }}">Dispositivos</a>.
+    Cole esse valor na tela de configuração do app, ou veja o QR code de pareamento em
+    <a href="{{ url_for('rooms.settings_index', tab='devices') }}">Configurações &rarr; Dispositivos</a>.
 </p>
 {% if room.display_token %}
 <div class="input-group col-md-6 mb-3">

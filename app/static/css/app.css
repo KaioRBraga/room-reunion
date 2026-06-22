@@ -1,12 +1,369 @@
-#calendar {
-    background-color:#fff;
-    padding: 1rem;
+/* ===== Paleta corporativa ReadyRoom - modo escuro (azul #007BBB + preto) =====
+   --rr-primary/--rr-primary-rgb/--rr-secondary/--rr-secondary-rgb são
+   sobrescritos por um <style> inline em base.html (cor escolhida pelo admin
+   em Configurações > Layout do painel > Site) - os valores aqui abaixo são só
+   o fallback/default. As variantes dark/darker/light são derivadas via
+   color-mix() a partir da cor primária em vez de hex fixos, pra continuar
+   coerente com qualquer cor que o admin escolher (não fica "azulado" se a
+   cor escolhida for outra). */
+:root {
+    --rr-primary: #007bbb;
+    --rr-primary-rgb: 0, 123, 187;
+    --rr-primary-dark: color-mix(in srgb, var(--rr-primary) 85%, black);
+    --rr-primary-darker: color-mix(in srgb, var(--rr-primary) 70%, black);
+    --rr-primary-light: color-mix(in srgb, var(--rr-primary) 20%, #11151b);
+    --rr-secondary: #0b2545;
+    --rr-secondary-rgb: 11, 37, 69;
+    --rr-ink: #0b0b0d;
+    --rr-bg: #11151b;
+    --rr-surface: #1a1f27;
+    --rr-surface-alt: #212833;
+    --rr-border: #2b323d;
+    --rr-text: #e7eaf0;
+    --rr-text-muted: #8b93a3;
+    --rr-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45);
+    --rr-shadow-md: 0 14px 32px rgba(0, 0, 0, 0.55);
+
+    --bs-primary: var(--rr-primary);
+    --bs-primary-rgb: var(--rr-primary-rgb);
+    --bs-primary-text-emphasis: color-mix(in srgb, var(--rr-primary) 55%, white);
+    --bs-primary-bg-subtle: var(--rr-primary-light);
+    --bs-primary-border-subtle: color-mix(in srgb, var(--rr-primary) 45%, black);
+
+    --bs-link-color: color-mix(in srgb, var(--rr-primary) 65%, white);
+    --bs-link-color-rgb: var(--rr-primary-rgb);
+    --bs-link-hover-color: color-mix(in srgb, var(--rr-primary) 45%, white);
+    --bs-link-hover-color-rgb: var(--rr-primary-rgb);
+
+    --bs-body-font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --bs-body-color: var(--rr-text);
+    --bs-body-bg: var(--rr-bg);
+    --bs-secondary-color: var(--rr-text-muted);
+    --bs-border-color: var(--rr-border);
+    --bs-tertiary-bg: var(--rr-surface-alt);
+    --bs-emphasis-color: #fff;
+
+    --bs-border-radius: 0.55rem;
+    --bs-border-radius-sm: 0.4rem;
+    --bs-border-radius-lg: 0.85rem;
+    --bs-border-radius-xl: 1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+    }
+}
+
+body {
+    letter-spacing: 0.005em;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-weight: 700;
+    color: var(--rr-text);
+    letter-spacing: -0.01em;
+}
+
+a {
+    text-decoration: none;
+}
+
+/* fill-mode propositalmente omitido (fica "none"): com "both"/"forwards" o
+   elemento permanece, para sempre, "alvo de uma animação de opacity" mesmo
+   parado no frame final (opacity:1) - e isso por si só cria um novo contexto
+   de empilhamento, mesmo sem nenhum transform envolvido. Como .container-fluid
+   é ancestral dos modais do Bootstrap (position:fixed), esse contexto prende
+   o modal abaixo do .modal-backdrop e o backdrop passa a interceptar todos os
+   cliques, mesmo com o modal visível por cima. Sem fill-mode, a animação para
+   de afetar o elemento assim que termina e o problema não ocorre.       */
+@keyframes rr-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.container-fluid {
+    animation: rr-fade-in 0.35s ease;
+}
+
+/* ===== Botões ===== */
+.btn {
+    font-weight: 600;
+    border-radius: var(--bs-border-radius);
+    letter-spacing: 0.01em;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn:not(.btn-link):hover {
+    transform: translateY(-1px);
+}
+
+.btn:not(.btn-link):active {
+    transform: translateY(0) scale(0.97);
+}
+
+.btn-primary {
+    --bs-btn-bg: var(--rr-primary);
+    --bs-btn-border-color: var(--rr-primary);
+    --bs-btn-hover-bg: var(--rr-primary-dark);
+    --bs-btn-hover-border-color: var(--rr-primary-dark);
+    --bs-btn-active-bg: var(--rr-primary-darker);
+    --bs-btn-active-border-color: var(--rr-primary-darker);
+    --bs-btn-disabled-bg: var(--rr-primary);
+    --bs-btn-disabled-border-color: var(--rr-primary);
+    --bs-btn-focus-shadow-rgb: var(--rr-primary-rgb);
+}
+
+.btn-primary:hover {
+    box-shadow: 0 6px 16px rgba(var(--rr-primary-rgb), 0.35);
+}
+
+.btn-outline-primary {
+    --bs-btn-color: color-mix(in srgb, var(--rr-primary) 65%, white);
+    --bs-btn-border-color: var(--rr-primary);
+    --bs-btn-hover-bg: var(--rr-primary);
+    --bs-btn-hover-border-color: var(--rr-primary);
+    --bs-btn-hover-color: #fff;
+    --bs-btn-active-bg: var(--rr-primary-dark);
+    --bs-btn-active-border-color: var(--rr-primary-dark);
+    --bs-btn-focus-shadow-rgb: var(--rr-primary-rgb);
+}
+
+.btn-link {
+    color: color-mix(in srgb, var(--rr-primary) 65%, white);
+}
+
+.bg-primary {
+    background-color: var(--rr-primary) !important;
+}
+
+.text-primary {
+    color: color-mix(in srgb, var(--rr-primary) 65%, white) !important;
+}
+
+/* ===== Formulários ===== */
+.form-control:focus,
+.form-select:focus {
+    border-color: color-mix(in srgb, var(--rr-primary) 55%, white);
+    box-shadow: 0 0 0 0.2rem rgba(var(--rr-primary-rgb), 0.25);
+}
+
+.form-check-input:checked {
+    background-color: var(--rr-primary);
+    border-color: var(--rr-primary);
+}
+
+.form-check-input:focus {
+    box-shadow: 0 0 0 0.2rem rgba(var(--rr-primary-rgb), 0.25);
+}
+
+.form-label {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--rr-text);
+}
+
+/* ===== Cards ===== */
+.card {
+    background-color: var(--rr-surface);
+    border: 1px solid var(--rr-border);
+    border-radius: var(--bs-border-radius-lg);
+    box-shadow: var(--rr-shadow-sm);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--rr-shadow-md);
+    border-color: #394150;
+}
+
+.card-title {
+    font-weight: 700;
+}
+
+/* ===== Tabelas ===== */
+.table {
+    --bs-table-bg: transparent;
+    --bs-table-color: var(--rr-text);
+}
+
+.table thead th {
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--rr-text-muted);
+    border-bottom-width: 1px;
+    background-color: var(--rr-surface-alt);
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) > * {
+    --bs-table-accent-bg: rgba(255, 255, 255, 0.025);
+}
+
+.table > tbody > tr {
+    transition: background-color 0.15s ease;
+}
+
+.table > tbody > tr:hover > * {
+    --bs-table-accent-bg: var(--rr-surface-alt);
+}
+
+/* ===== Badges ===== */
+.badge {
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    border-radius: 999px;
+    padding: 0.42em 0.85em;
+}
+
+/* ===== Modais / alertas ===== */
+.modal-content {
+    background-color: var(--rr-surface);
+    border: 1px solid var(--rr-border);
+    border-radius: var(--bs-border-radius-lg);
+    box-shadow: var(--rr-shadow-md);
+}
+
+.modal-header {
+    border-bottom: 1px solid var(--rr-border);
+}
+
+.modal-footer {
+    border-top: 1px solid var(--rr-border);
+}
+
+.modal.fade .modal-dialog {
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
+    transform: scale(0.92) translateY(-12px);
+    opacity: 0;
+}
+
+.modal.show .modal-dialog {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+}
+
+.alert {
+    border: none;
+    border-radius: var(--bs-border-radius);
+}
+
+/* ===== Sidebar / shell do app ===== */
+.app-sidebar {
+    background: var(--rr-ink) !important;
+    border-radius: var(--bs-border-radius-lg);
+}
+
+.app-sidebar .brand-link {
+    color: #fff;
+}
+
+.app-sidebar .nav-link {
+    color: rgba(255, 255, 255, 0.65);
     border-radius: 0.5rem;
-    box-shadow: 0 0 0.5rem rgba(0, 0, 0, 0.08);
+    font-weight: 500;
+    transition: background-color 0.15s ease, color 0.15s ease, padding-left 0.15s ease;
+}
+
+.app-sidebar .nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.07);
+    color: #fff;
+    padding-left: 0.85rem;
+}
+
+.app-sidebar .nav-link.active {
+    background-color: var(--rr-primary);
+    color: #fff;
+}
+
+.app-sidebar hr {
+    opacity: 0.12;
+}
+
+.app-sidebar #profileDropdown {
+    transition: opacity 0.15s ease;
+}
+
+.app-sidebar #profileDropdown:hover {
+    opacity: 0.85;
+}
+
+.app-sidebar .brand-mark-img {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+    flex: none;
+}
+
+.app-sidebar .sidebar-powered-by {
+    display: flex;
+    justify-content: center;
+    padding: 0.5rem 0.75rem 0.25rem;
+}
+
+.app-sidebar .sidebar-powered-by img {
+    max-width: 140px;
+    width: 100%;
+    height: auto;
+    opacity: 0.95;
+}
+
+/* ===== Tela de autenticação (login) ===== */
+.auth-shell {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at top left, #11151c 0%, var(--rr-ink) 55%, #000 100%);
+}
+
+.auth-card {
+    border: 1px solid var(--rr-border);
+    border-radius: var(--bs-border-radius-xl);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+
+.auth-logo {
+    max-width: 220px;
+    width: 100%;
+    height: auto;
+}
+
+/* ===== FullCalendar ===== */
+.fc {
+    --fc-border-color: var(--rr-border);
+    --fc-page-bg-color: transparent;
+    --fc-neutral-bg-color: rgba(255, 255, 255, 0.04);
+    --fc-list-event-hover-bg-color: rgba(255, 255, 255, 0.05);
+    --fc-button-bg-color: var(--rr-primary);
+    --fc-button-border-color: var(--rr-primary);
+    --fc-button-hover-bg-color: var(--rr-primary-dark);
+    --fc-button-hover-border-color: var(--rr-primary-dark);
+    --fc-button-active-bg-color: var(--rr-primary-darker);
+    --fc-button-active-border-color: var(--rr-primary-darker);
+    --fc-today-bg-color: rgba(var(--rr-primary-rgb), 0.15);
+    --fc-event-bg-color: var(--rr-primary);
+    --fc-event-border-color: var(--rr-primary);
+    --fc-highlight-color: rgba(var(--rr-primary-rgb), 0.25);
+    font-family: var(--bs-body-font-family);
+    color: var(--rr-text);
+}
+
+#calendar {
+    background-color: var(--rr-surface);
+    padding: 1rem;
+    border: 1px solid var(--rr-border);
+    border-radius: var(--bs-border-radius-lg);
+    box-shadow: var(--rr-shadow-sm);
 }
 
 #mapWrap {
     overflow: hidden;
+    background-color: var(--rr-surface) !important;
 }
 
 .room-pin {
@@ -14,17 +371,15 @@
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background-color: #0d6efd;
+    background-color: var(--rr-primary);
     border: 2px solid #fff;
     box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
     transform: translate(-50%, -50%);
     cursor: pointer;
     z-index: 2;
 
-    transition: all 0.2s ease;
-    
-    position: absolute;
-    cursor: pointer;
+    transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+
     display: flex;
     align-items: center;
     justify-content: center;
@@ -44,17 +399,25 @@
     background-color: #dc3545 !important;
     border-color: #dc3545 !important;
     box-shadow: 0 0 15px rgba(220, 53, 69, 0.5) !important;
+    animation: rr-pulse-occupied 2.2s ease-in-out infinite;
 }
 
 
 .room-pin.available,
 .room-pin.available.room-pin {
-    background-color: #28a745 !important;
-    border-color: #28a745 !important;
-    box-shadow: 0 0 15px rgba(40, 167, 69, 0.5) !important;
+    background-color: #1f9d55 !important;
+    border-color: #1f9d55 !important;
+    box-shadow: 0 0 15px rgba(31, 157, 85, 0.5) !important;
 }
+
+@keyframes rr-pulse-occupied {
+    0%, 100% { box-shadow: 0 0 15px rgba(220, 53, 69, 0.5) !important; }
+    50% { box-shadow: 0 0 26px rgba(220, 53, 69, 0.9) !important; }
+}
+
 .room-pin:hover {
-    background-color: #0b5ed7;
+    background-color: var(--rr-primary-dark);
+    transform: translate(-50%, -50%) scale(1.15);
 }
 
 .room-pin-label {
@@ -77,8 +440,231 @@
     justify-content: center;
     padding: 0.4rem 1rem;
     border-radius: 999px;
-    background-color: #198754;
+    background-color: var(--rr-primary);
     color: #fff;
     cursor: grab;
     user-select: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.palette-pin:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(var(--rr-primary-rgb), 0.35);
+}
+
+/* ===== Pré-visualização do layout do painel (aba "Layout do painel") =====
+   Mockup estático que imita o app Flutter (display_app) pra dar feedback
+   visual imediato sem precisar abrir o app de verdade num tablet. */
+.layout-preview-shell {
+    position: relative;
+    background: var(--rr-ink);
+    border: 1px solid var(--rr-border);
+    border-radius: 16px;
+    overflow: hidden;
+    max-width: 420px;
+}
+
+.layout-preview-agenda-block {
+    margin: 12px 20px;
+    padding: 16px;
+    border: 1px dashed var(--rr-border);
+    border-radius: 10px;
+    color: var(--rr-text-muted);
+    font-size: 0.75rem;
+    text-align: center;
+}
+
+.layout-preview-corner-action {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    z-index: 2;
+}
+
+.layout-preview-action-sm {
+    background: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-weight: 700;
+    font-size: 0.78rem;
+}
+
+.layout-preview-topbar {
+    padding: 16px 20px 0;
+    text-align: center;
+}
+
+.layout-preview-logo {
+    height: 32px;
+}
+
+.layout-preview-roomrow {
+    padding: 10px 20px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--rr-border);
+}
+
+.layout-preview-roomname {
+    color: var(--rr-text);
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
+.layout-preview-tags {
+    display: flex;
+    gap: 6px;
+}
+
+.layout-preview-tag {
+    background: var(--rr-surface-alt);
+    color: var(--rr-text-muted);
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+}
+
+.layout-preview-banner {
+    padding: 18px 20px;
+    transition: background-color 0.15s ease;
+}
+
+.layout-preview-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #fff;
+    font-weight: 800;
+    font-size: 1.1rem;
+    margin-bottom: 8px;
+}
+
+.layout-preview-meeting {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.85rem;
+    margin-bottom: 14px;
+}
+
+.layout-preview-hint {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.78rem;
+    margin-bottom: 10px;
+}
+
+.layout-preview-action {
+    background: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 12px 22px;
+    font-weight: 700;
+    width: 100%;
+}
+
+/* ===== Pré-visualização do site (aba "Layout do painel" > "Site") =====
+   Mockup estático (sidebar + card) que reage ao vivo a logo/cor escolhidas,
+   antes de salvar - mesmo princípio do preview do painel acima. */
+.site-preview-shell {
+    display: flex;
+    border: 1px solid var(--rr-border);
+    border-radius: 16px;
+    overflow: hidden;
+    max-width: 420px;
+    min-height: 280px;
+}
+
+.site-preview-sidebar {
+    width: 130px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    background: var(--rr-ink);
+    padding: 14px 10px;
+}
+
+.site-preview-brand {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 700;
+    margin-bottom: 14px;
+}
+
+.site-preview-icon {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+    flex: none;
+}
+
+.site-preview-nav-item {
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.72rem;
+    font-weight: 500;
+    padding: 6px 8px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    transition: background-color 0.15s ease;
+}
+
+.site-preview-nav-item.active {
+    color: #fff;
+    font-weight: 700;
+}
+
+.site-preview-logo-row {
+    margin-top: auto;
+    text-align: center;
+    padding-top: 14px;
+}
+
+.site-preview-logo-row img {
+    max-width: 90px;
+    max-height: 24px;
+    object-fit: contain;
+    opacity: 0.95;
+}
+
+.site-preview-main {
+    flex: 1;
+    background: var(--rr-bg);
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.site-preview-card {
+    background: var(--rr-surface);
+    border: 1px solid var(--rr-border);
+    border-radius: 12px;
+    padding: 14px;
+    width: 100%;
+}
+
+.site-preview-card-title {
+    color: var(--rr-text);
+    font-size: 0.8rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
+.site-preview-btn {
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 7px 14px;
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.site-preview-bar {
+    height: 10px;
+    border-radius: 4px;
+    width: 70%;
 }

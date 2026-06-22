@@ -2,8 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/display_status.dart';
+import '../theme/app_colors.dart';
 import 'day_timeline.dart';
 
+/// Tela principal do painel: agenda do dia em destaque (estilo calendário do
+/// site, tema escuro). A ação principal de cada status (Iniciar agora / Fazer
+/// check-in / Encerrar reunião) fica em destaque no topo, à direita, e o
+/// status da sala é evidenciado numa faixa maior (cor + rótulo grande) junto
+/// com a reunião atual/próxima, em vez de um badge pequeno.
 class DisplayBody extends StatelessWidget {
   final DisplayStatus status;
   final bool busy;
@@ -32,170 +38,323 @@ class DisplayBody extends StatelessWidget {
     DisplayStatusKind.available: 'Disponível',
   };
 
-  List<Color> get _gradientColors {
+  Color get _statusColor {
     switch (status.status) {
       case DisplayStatusKind.startingSoon:
-        return [const Color(0xFFF2A65A), const Color(0xFFD9822B)];
+        return status.layout.colorStartingSoon;
       case DisplayStatusKind.inUse:
-        return [const Color(0xFFE6645C), const Color(0xFFC0392B)];
+        return status.layout.colorInUse;
       case DisplayStatusKind.available:
-        return [const Color(0xFF57C16A), const Color(0xFF2E8B45)];
+        return status.layout.colorAvailable;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final floatingButton = status.layout.buttonPosition == ButtonPosition.topRight;
+    final agendaAbove = status.layout.agendaPosition == AgendaPosition.aboveStatus;
+    final banner = _statusBanner(embedAction: !floatingButton);
+    final agenda = _agendaArea();
+
     return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: _gradientColors,
-        ),
-      ),
+      color: AppColors.bg,
       child: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isWide = constraints.maxWidth > constraints.maxHeight;
-            final timeline = Padding(
-              padding: const EdgeInsets.all(12),
-              child: DayTimeline(events: status.todaySchedule, now: now, onSlotTap: onSlotTap),
-            );
-
-            if (isWide) {
-              // Tablet/landscape: painel principal à esquerda, agenda do dia à direita.
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 6,
-                    child: SingleChildScrollView(child: _mainContent(headlineSize: 48)),
-                  ),
-                  Container(width: 1, color: Colors.white24),
-                  Expanded(
-                    flex: 4,
-                    child: SingleChildScrollView(child: timeline),
-                  ),
-                ],
-              );
-            }
-
-            // Celular/retrato: tudo em coluna única, com scroll - garante que o
-            // botão de ação nunca fique cortado fora da tela.
-            return SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _mainContent(headlineSize: 36),
-                  Container(height: 1, color: Colors.white24, margin: const EdgeInsets.symmetric(horizontal: 24)),
-                  timeline,
-                ],
-              ),
-            );
-          },
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                _topBar(),
+                if (agendaAbove) agenda else banner,
+                if (agendaAbove) banner else agenda,
+                _bottomBar(),
+              ],
+            ),
+            if (floatingButton)
+              Positioned(top: 16, right: 20, child: _primaryAction(compact: true)),
+          ],
         ),
       ),
     );
   }
 
-  Widget _mainContent({required double headlineSize}) {
-    final meeting = status.currentMeeting ?? status.nextMeeting;
+  Widget _agendaArea() {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: DayTimeline(events: status.todaySchedule, now: now, onSlotTap: onSlotTap),
+        ),
+      ),
+    );
+  }
 
-    return Padding(
-      padding: const EdgeInsets.all(24),
+  Widget _topBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+      decoration: const BoxDecoration(
+        color: AppColors.ink,
+        border: Border(bottom: BorderSide(color: AppColors.border)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
         children: [
-          const Row(
+          if (status.layout.showLogo) ...[
+            Center(child: _logoImage()),
+            const SizedBox(height: 14),
+          ],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Icon(Icons.meeting_room, color: Colors.white, size: 22),
-              SizedBox(width: 8),
               Text(
-                'ReadyRoom',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                status.room.name,
+                style: const TextStyle(color: AppColors.text, fontSize: 24, fontWeight: FontWeight.w700),
               ),
+              if (status.layout.showTags) ...[
+                const SizedBox(width: 12),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: status.room.tags.map(_tagChip).toList(),
+                  ),
+                ),
+              ],
             ],
           ),
-          const SizedBox(height: 20),
-          Text(
-            status.room.name,
-            style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: status.room.tags.map(_tagChip).toList(),
-          ),
-          const SizedBox(height: 28),
-          Text(
-            _statusLabels[status.status]!,
-            key: const Key('statusHeadline'),
-            style: TextStyle(color: Colors.white, fontSize: headlineSize, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 24),
-          if (meeting != null) ..._meetingInfo(meeting),
-          const SizedBox(height: 24),
-          _actionButtons(),
         ],
       ),
     );
   }
 
-  Widget _tagChip(String text) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.white54),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 12)),
-      );
-
-  List<Widget> _meetingInfo(MeetingSummary meeting) {
-    final timeFormat = DateFormat('HH:mm');
-    final rows = <Widget>[
-      _infoRow(Icons.event_note, meeting.title),
-      _infoRow(Icons.person, meeting.organizer),
-    ];
-
-    if (status.status == DisplayStatusKind.available) {
-      final diff = meeting.start.difference(now);
-      rows.add(_infoRow(Icons.schedule, 'Próxima reunião em ${_formatDuration(diff)}'));
-    } else if (status.status == DisplayStatusKind.startingSoon && status.checkInDeadline != null) {
-      final remaining = status.checkInDeadline!.difference(now);
-      final text = remaining.isNegative ? '0:00' : _formatDuration(remaining);
-      rows.add(
-        _infoRow(
-          Icons.schedule,
-          '${timeFormat.format(meeting.start)} - ${timeFormat.format(meeting.end)}'
-          '  ·  Check-in: $text',
-        ),
-      );
-    } else {
-      rows.add(
-        _infoRow(Icons.schedule, '${timeFormat.format(meeting.start)} - ${timeFormat.format(meeting.end)}'),
-      );
+  /// Logo do app: usa a enviada pelo admin (`Layout do painel > Tablet`)
+  /// quando configurada, com fallback pro asset padrão se a rede falhar -
+  /// o tablet fica fixado na sala, então uma falha de rede não pode deixar
+  /// a tela sem logo nenhuma.
+  Widget _logoImage() {
+    final url = status.layout.logoUrl;
+    if (url == null) {
+      return Image.asset('assets/img/logo-motivabpo.png', height: 48, fit: BoxFit.contain);
     }
-    if (meeting.virtualRoomUrl != null) {
-      rows.add(_infoRow(Icons.videocam, meeting.virtualRoomUrl!));
-    }
-    return rows;
+    return Image.network(
+      url,
+      height: 48,
+      fit: BoxFit.contain,
+      errorBuilder: (context, error, stackTrace) =>
+          Image.asset('assets/img/logo-motivabpo.png', height: 48, fit: BoxFit.contain),
+    );
   }
 
-  Widget _infoRow(IconData icon, String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
+  /// Ação principal do status. `compact` é usado quando o admin escolhe a
+  /// posição "canto superior direito" (`ButtonPosition.topRight`) - o botão
+  /// fica isolado sobre a barra de topo escura, então precisa ser menor pra
+  /// não estourar a largura em telas estreitas (ver BUGS.md #2).
+  Widget _primaryAction({bool compact = false}) {
+    switch (status.status) {
+      case DisplayStatusKind.available:
+        return _bigActionButton(
+          icon: Icons.play_arrow_rounded,
+          label: 'Iniciar agora',
+          onPressed: busy ? null : onStartNow,
+          compact: compact,
+        );
+      case DisplayStatusKind.startingSoon:
+        if (status.currentMeeting?.checkedIn == true) {
+          return _confirmedBadge();
+        }
+        return _bigActionButton(
+          icon: Icons.login_rounded,
+          label: 'Fazer check-in',
+          onPressed: busy ? null : onCheckIn,
+          compact: compact,
+        );
+      case DisplayStatusKind.inUse:
+        return _bigActionButton(
+          icon: Icons.stop_circle_outlined,
+          label: 'Encerrar reunião',
+          onPressed: busy ? null : onEnd,
+          compact: compact,
+        );
+    }
+  }
+
+  /// Branco propositalmente - o botão fica em cima da faixa de status (que já
+  /// é colorida) ou da barra de topo escura, então o contraste vem da cor do
+  /// texto/ícone, não do fundo.
+  Widget _bigActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+    bool compact = false,
+  }) {
+    return FilledButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: compact ? 22 : 32),
+      label: Text(label, style: TextStyle(fontWeight: FontWeight.w700, fontSize: compact ? 15 : 21)),
+      style: FilledButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: _statusColor,
+        disabledBackgroundColor: Colors.white.withValues(alpha: 0.7),
+        disabledForegroundColor: _statusColor.withValues(alpha: 0.6),
+        padding: EdgeInsets.symmetric(horizontal: compact ? 18 : 40, vertical: compact ? 12 : 30),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(compact ? 12 : 16)),
+      ),
+    );
+  }
+
+  Widget _confirmedBadge() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white, size: 18),
+            Icon(Icons.check_circle, color: _statusColor, size: 26),
             const SizedBox(width: 10),
-            Expanded(
-              child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 16)),
+            Text(
+              'Check-in confirmado',
+              style: TextStyle(color: _statusColor, fontWeight: FontWeight.w700, fontSize: 16),
             ),
           ],
         ),
       );
+
+  Widget _tagChip(String text) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(text, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+      );
+
+  IconData get _statusIcon {
+    switch (status.status) {
+      case DisplayStatusKind.startingSoon:
+        return Icons.schedule;
+      case DisplayStatusKind.inUse:
+        return Icons.do_not_disturb_on_outlined;
+      case DisplayStatusKind.available:
+        return Icons.check_circle;
+    }
+  }
+
+  /// Faixa de status: o fundo inteiro usa a cor do status (verde/âmbar/
+  /// vermelho) pra ficar bem visível de longe, em vez de só um detalhe sutil.
+  /// `embedAction` é false quando o botão foi configurado pra ficar isolado
+  /// no canto superior direito (`ButtonPosition.topRight`) - nesse caso a
+  /// faixa mostra só o texto de status, sem repetir o botão.
+  Widget _statusBanner({required bool embedAction}) {
+    final meeting = status.currentMeeting ?? status.nextMeeting;
+    final textColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          key: const Key('statusHeadline'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(_statusIcon, color: Colors.white, size: 22),
+            const SizedBox(width: 10),
+            Text(
+              _statusLabels[status.status]!,
+              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (meeting != null) ..._meetingLines(meeting) else _emptyScheduleLine(),
+      ],
+    );
+    final videoIcon = (meeting?.virtualRoomUrl != null && status.layout.showVideoIcon)
+        ? const Padding(
+            padding: EdgeInsets.only(right: 16),
+            child: Icon(Icons.videocam_outlined, color: Colors.white, size: 20),
+          )
+        : null;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      color: _statusColor,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Em telas estreitas (celular em retrato) o botão grande não cabe
+          // ao lado do texto - empilha em vez de estourar a largura (overflow).
+          if (constraints.maxWidth < 560) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                textColumn,
+                if (embedAction) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [?videoIcon, _primaryAction()],
+                  ),
+                ] else if (videoIcon != null) ...[
+                  const SizedBox(height: 16),
+                  Row(mainAxisAlignment: MainAxisAlignment.end, children: [videoIcon]),
+                ],
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(child: textColumn),
+              ?videoIcon,
+              if (embedAction) _primaryAction(),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _emptyScheduleLine() => const Text(
+        'Nenhuma reunião agendada para hoje.',
+        style: TextStyle(color: Colors.white, fontSize: 13.5),
+      );
+
+  List<Widget> _meetingLines(MeetingSummary meeting) {
+    final timeFormat = DateFormat('HH:mm');
+    String timeInfo;
+    if (status.status == DisplayStatusKind.available) {
+      timeInfo = 'em ${_formatDuration(meeting.start.difference(now))} (${timeFormat.format(meeting.start)})';
+    } else if (status.status == DisplayStatusKind.startingSoon && status.checkInDeadline != null) {
+      final remaining = status.checkInDeadline!.difference(now);
+      final text = remaining.isNegative ? '0:00' : _formatDuration(remaining);
+      timeInfo = '${timeFormat.format(meeting.start)} - ${timeFormat.format(meeting.end)}  ·  Check-in: $text';
+    } else {
+      timeInfo = '${timeFormat.format(meeting.start)} - ${timeFormat.format(meeting.end)}';
+    }
+
+    final titlePrefix = status.status == DisplayStatusKind.available ? 'Próxima: ' : '';
+
+    return [
+      Text(
+        '$titlePrefix${meeting.title}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+      ),
+      const SizedBox(height: 3),
+      Text(
+        '${meeting.organizer}  ·  $timeInfo',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: Colors.white70, fontSize: 13),
+      ),
+    ];
+  }
 
   String _formatDuration(Duration d) {
     final abs = d.isNegative ? -d : d;
@@ -206,72 +365,49 @@ class DisplayBody extends StatelessWidget {
     return '${abs.inSeconds}s';
   }
 
-  Widget _actionButtons() {
+  /// Conteúdo secundário no rodapé - some por completo quando não há nada a
+  /// mostrar (ex: status "Começando" já com check-in feito).
+  Widget _bottomBar() {
+    final content = _secondaryContent();
+    if (content == null) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+      decoration: const BoxDecoration(
+        color: AppColors.ink,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      child: content,
+    );
+  }
+
+  Widget? _secondaryContent() {
     switch (status.status) {
       case DisplayStatusKind.available:
-        return _bigButton('Start Meeting Now', busy ? null : onStartNow);
+        if (!status.layout.showScheduleHint) return null;
+        return const Text(
+          'Toque um horário livre na agenda para reservar com usuário e PIN',
+          style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+        );
       case DisplayStatusKind.startingSoon:
-        if (status.currentMeeting?.checkedIn == true) {
-          return _checkedInBadge();
-        }
-        return _bigButton('Check In', busy ? null : onCheckIn);
+        return null;
       case DisplayStatusKind.inUse:
-        return Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            _bigButton('End', busy ? null : onEnd),
-            _bigButton('Extend by 15 mins', busy ? null : onExtend, filled: false),
-          ],
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: _outlinedButton('Estender 15 min', busy ? null : onExtend),
         );
     }
   }
 
-  Widget _checkedInBadge() => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.white24,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: Colors.white),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check_circle, color: Colors.white, size: 20),
-            SizedBox(width: 8),
-            Text(
-              'Check-in confirmado',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-      );
-
-  Widget _bigButton(String label, VoidCallback? onPressed, {bool filled = true}) {
-    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(999));
-    final child = Text(label, style: const TextStyle(fontWeight: FontWeight.bold));
-
-    if (filled) {
-      return FilledButton(
-        onPressed: onPressed,
-        style: FilledButton.styleFrom(
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black87,
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-          shape: shape,
-        ),
-        child: child,
-      );
-    }
+  Widget _outlinedButton(String label, VoidCallback? onPressed) {
     return OutlinedButton(
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.white,
-        side: const BorderSide(color: Colors.white),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        shape: shape,
+        foregroundColor: AppColors.text,
+        side: const BorderSide(color: AppColors.border),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
-      child: child,
+      child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
     );
   }
 }

@@ -8,10 +8,12 @@ Sistema de reserva de salas de reunião. Web app em Flask (calendário, mapa int
 app/                  # Aplicação Flask (backend + páginas web)
   auth/               # Login via Active Directory (LDAP), sessão, perfil (e-mail, PIN, avatar)
   bookings/           # Reservas: calendário, criação/cancelamento, convidados, sala virtual
-  rooms/              # Salas: mapa interativo com pins, lixeira, CRUD admin, permissões, dispositivos
+  rooms/              # Salas: mapa interativo com pins, lixeira, CRUD admin, permissões, dispositivos,
+                      #   identidade visual do site e layout do painel (aba "Configurações")
   display/            # API consumida pelo painel/tablet de cada sala (sem login AD)
   reports/            # Dashboard de estatísticas de reservas (admin / grupos autorizados)
-  models.py           # Room, Booking, BookingAttendee, User, FloorMap, RoomBookingGroup, ReportViewerGroup
+  models.py           # Room, Booking, BookingAttendee, User, FloorMap, RoomBookingGroup,
+                      #   ReportViewerGroup, DisplayLayoutSettings, SiteBrandingSettings
   schema_migrations.py # ALTER TABLE leve para colunas novas em bancos já existentes (sem Alembic)
   ldap_client.py       # Bind/consulta no AD (autenticação, grupos, busca de pessoas)
   templates/, static/  # Views Jinja2, CSS e JS (FullCalendar, mapa, relatórios com Chart.js)
@@ -32,6 +34,7 @@ BACKLOG.md            # Spec de funcionalidades levantadas antes da implementaç
 - **Painel da sala**: status calculado (`available` / `starting_soon` / `in_use`) com janela de aviso antes do início (`CHECK_IN_HEADSUP_MINUTES`) e tolerância de check-in depois do início (`CHECK_IN_GRACE_MINUTES`); sem check-in dentro do prazo, a reserva expira automaticamente (no-show, `cancelled_by="auto:no-show"`). Também permite agendar direto pelo tablet, autenticado por PIN (ver **Agendamento por PIN**).
 - **User**: cadastro local (SQLite), alimentado a cada login bem-sucedido no AD (`app/auth/services.py:upsert_user_login`). Guarda e-mail e PIN (criptografados, vinculados na aba **Perfil**) e foto de perfil.
 - **Relatórios**: dashboard agregando reservas por período/sala — nº de reservas, taxa de ocupação, taxa de no-show, duração média, sala/organizador com mais e menos reservas, reuniões iniciadas mais cedo via check-in antecipado. Acesso liberado a admins e a grupos AD listados em `ReportViewerGroup` (configurável na aba Permissões).
+- **DisplayLayoutSettings** / **SiteBrandingSettings**: configuração global (singleton, uma linha cada) editada na aba **Configurações** -> **Layout do painel**. A primeira controla a aparência do app do painel (cor por status, visibilidade de elementos) e viaja dentro do próprio payload de `/api/display/status`; a segunda controla a identidade visual do site (ícone, logo, cor primária/secundária) e é aplicada a toda página via context processor + variáveis CSS. Ver seção dedicada abaixo.
 
 ## Autenticação
 
@@ -47,7 +50,7 @@ BACKLOG.md            # Spec de funcionalidades levantadas antes da implementaç
 |---|---|---|
 | `/login`, `/logout`, `/profile` | `auth` | público / logado |
 | `/bookings` | `bookings` | usuário logado |
-| `/rooms` | `rooms` | mapa visível a todos; lixeira, upload de planta, criação/edição de pins, gestão tabular, permissões e `/rooms/devices` são admin-only |
+| `/rooms` | `rooms` | mapa visível a todos; lixeira, upload de planta, criação/edição de pins e a aba **Configurações** (`/rooms/settings` - lista de salas, dispositivos, layout do painel, permissões) são admin-only |
 | `/reports` | `reports` | admin ou grupo AD liberado em `ReportViewerGroup` |
 | `/api/display/*` | `display` | token de dispositivo (`X-Display-Token`), usado pelo app Flutter |
 
@@ -75,7 +78,14 @@ Cobrem sobreposição de horários de reserva e convidados (`test_booking_overla
 
 ## Conectando um painel/tablet a uma sala
 
-Aba **Dispositivos** (admin-only, `/rooms/devices`): lista todas as salas com um QR code por sala, gerado a partir da URL do servidor + `display_token` (gera/renova o token reaproveitando `rooms.regenerate_display_token`). No app do painel, a tela de configuração tem um botão "Escanear QR code" que lê esse QR (via `mobile_scanner`, `lib/screens/qr_scan_screen.dart`) e preenche URL + token automaticamente, sem digitação manual — útil tanto para tablets fixos quanto para testar rápido em um celular.
+Aba **Configurações** -> **Dispositivos** (admin-only, `/rooms/settings?tab=devices`): lista todas as salas com um QR code por sala, gerado a partir da URL do servidor + `display_token` (gera/renova o token reaproveitando `rooms.regenerate_display_token`). No app do painel, a tela de configuração tem um botão "Escanear QR code" que lê esse QR (via `mobile_scanner`, `lib/screens/qr_scan_screen.dart`) e preenche URL + token automaticamente, sem digitação manual — útil tanto para tablets fixos quanto para testar rápido em um celular.
+
+## Identidade visual e layout (aba "Configurações" > "Layout do painel")
+
+Admin-only, `/rooms/settings?tab=layout`. Duas sub-abas, cada uma com pré-visualização ao vivo (reage antes de salvar) e botão "Restaurar padrão":
+
+- **Site**: upload de ícone (marca pequena ao lado de "ReadyRoom" na sidebar + favicon da aba do navegador) e logo (wordmark do topo do login e do rodapé da sidebar), além de cor primária e secundária. Os arquivos são normalizados para PNG (`app/rooms/branding_storage.py`) e salvos em `app/static/img/uploads/`; as cores ficam em `SiteBrandingSettings` e são injetadas como variáveis CSS (`--rr-primary`/`--rr-secondary`) num `<style>` inline em `base.html` via context processor (`inject_site_branding`). O resto da paleta (tons de hover/active/claro, sombras, foco de formulário) é derivado dessas duas cores via `color-mix()` em `app.css`, então qualquer cor escolhida propaga pro site inteiro (botões, links, sidebar, FullCalendar, gráficos do relatório) sem precisar editar CSS à mão.
+- **Tablet**: cor de cada status (disponível/começando/em uso) e visibilidade de elementos (logo, tags de equipamento, ícone de videoconferência, dica de toque na agenda) do app `display_app`. Persistido em `DisplayLayoutSettings` e enviado pro app Flutter dentro do próprio payload de `/api/display/status` (chave `"layout"`, ver `get_display_status` em `app/bookings/services.py`) - sem endpoint separado, sem precisar reinstalar o app pra refletir a mudança.
 
 ## App do painel (`display_app/`)
 

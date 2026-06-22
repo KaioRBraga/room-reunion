@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/display_status.dart';
 import '../services/api_client.dart';
 import '../services/device_config.dart';
+import '../theme/app_colors.dart';
 import '../widgets/display_body.dart';
 import '../widgets/pin_booking_sheet.dart';
 
@@ -119,7 +120,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
     final status = _status;
     if (status == null) {
       return Scaffold(
-        backgroundColor: const Color(0xFF222831),
+        backgroundColor: AppColors.bg,
         body: Center(
           child: _error != null
               ? Padding(
@@ -129,18 +130,19 @@ class _DisplayScreenState extends State<DisplayScreen> {
                     children: [
                       Text(
                         _error!,
-                        style: const TextStyle(color: Colors.white),
+                        style: const TextStyle(color: AppColors.text),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),
                       TextButton(
                         onPressed: widget.onReconfigure,
+                        style: TextButton.styleFrom(foregroundColor: AppColors.primary),
                         child: const Text('Reconfigurar painel'),
                       ),
                     ],
                   ),
                 )
-              : const CircularProgressIndicator(),
+              : const CircularProgressIndicator(color: AppColors.primary),
         ),
       );
     }

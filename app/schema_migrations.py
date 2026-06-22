@@ -18,6 +18,10 @@ _NEW_COLUMNS = [
     ("booking", "virtual_room_url", "VARCHAR(500)"),
     ("user", "avatar_filename", "VARCHAR(255)"),
     ("user", "pin_encrypted", "VARCHAR(255)"),
+    ("site_branding_settings", "icon_filename", "VARCHAR(255)"),
+    ("display_layout_settings", "agenda_position", "VARCHAR(20) DEFAULT 'below_status'"),
+    ("display_layout_settings", "button_position", "VARCHAR(20) DEFAULT 'status_banner'"),
+    ("display_layout_settings", "logo_filename", "VARCHAR(255)"),
 ]
 
 
