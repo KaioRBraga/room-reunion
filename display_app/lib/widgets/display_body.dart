@@ -108,24 +108,21 @@ class DisplayBody extends StatelessWidget {
             Center(child: _logoImage()),
             const SizedBox(height: 14),
           ],
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.end,
+            spacing: 12,
+            runSpacing: 8,
             children: [
               Text(
                 status.room.name,
                 style: const TextStyle(color: AppColors.text, fontSize: 24, fontWeight: FontWeight.w700),
               ),
-              if (status.layout.showTags) ...[
-                const SizedBox(width: 12),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 3),
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: status.room.tags.map(_tagChip).toList(),
-                  ),
+              if (status.layout.showTags)
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: status.room.tags.map(_tagChip).toList(),
                 ),
-              ],
             ],
           ),
         ],
@@ -287,7 +284,9 @@ class DisplayBody extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           // Em telas estreitas (celular em retrato) o botão grande não cabe
-          // ao lado do texto - empilha em vez de estourar a largura (overflow).
+          // ao lado do texto - empilha em vez de estourar a largura (overflow)
+          // e usa a versão compacta do botão, senão ele domina a tela inteira
+          // num celular (proporcional demais ao espaço disponível).
           if (constraints.maxWidth < 560) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -297,7 +296,7 @@ class DisplayBody extends StatelessWidget {
                   const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
-                    children: [?videoIcon, _primaryAction()],
+                    children: [?videoIcon, _primaryAction(compact: true)],
                   ),
                 ] else if (videoIcon != null) ...[
                   const SizedBox(height: 16),

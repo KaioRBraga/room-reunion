@@ -157,3 +157,110 @@ depois da mudança, então vale sempre checar `schema_migrations.py` ao alterar
 um model que já passou por pelo menos um `create_app()`. Esta correção só tem
 efeito a partir do próximo restart do servidor real - rodando em memória, ele
 continua com o erro até reiniciar.
+
+## 4. Botão "Instalar via USB" não encontrava o `adb` numa máquina onde ele funciona normalmente
+
+**Data**: 2026-06-23
+
+**Sintoma relatado**: ao clicar em "Instalar via USB" (aba Configurações ->
+Layout do painel -> Tablet), a mensagem de erro dizia `'adb' não encontrado
+no PATH desta máquina. Instale o Android SDK Platform Tools.` - mesmo sendo a
+mesma máquina onde `flutter run -d <device-id>` e comandos `adb` manuais já
+tinham funcionado nesta sessão (ver bug #2).
+
+**Causa raiz**: a rota `install_tablet_apk()`
+(`app/rooms/routes.py`) localizava o `adb` só com `shutil.which("adb")`, que
+procura exclusivamente nos diretórios listados na variável de ambiente
+`PATH`. O Android SDK Platform Tools (onde o binário `adb`/`adb.exe` de fato
+mora, em `<SDK>/platform-tools/`) nunca foi adicionado ao `PATH` desta
+máquina - o Flutter e o Android Studio encontram o `adb` por outro caminho:
+lendo as variáveis `ANDROID_HOME`/`ANDROID_SDK_ROOT`. Como essas variáveis
+não são `PATH`, `shutil.which("adb")` retornava `None` mesmo com o SDK
+instalado e o `adb` plenamente funcional.
+
+**Diagnóstico**: confirmado comparando os dois mecanismos de busca na mesma
+sessão de PowerShell: `Get-Command adb` não encontrava nada, enquanto
+`$env:ANDROID_HOME` apontava para `...\AppData\Local\Android\Sdk` e
+`Test-Path "$env:ANDROID_HOME\platform-tools\adb.exe"` confirmava que o
+binário existia ali. Reproduzido isoladamente chamando `shutil.which("adb")`
+direto em Python (retornou `None`) e depois `shutil.which("adb",
+path=f"{sdk}\\platform-tools")` (encontrou o `adb.EXE`).
+
+**Correção**: adicionado `_resolve_adb_path()` em `app/rooms/routes.py`, que
+tenta `shutil.which("adb")` primeiro e, se não encontrar, procura em
+`ANDROID_HOME`/`ANDROID_SDK_ROOT` + `platform-tools` antes de desistir.
+`install_tablet_apk()` passou a usar essa função em vez de chamar
+`shutil.which` diretamente. Validado chamando `_resolve_adb_path()` nesta
+máquina (resolveu para o `adb.exe` real do SDK) e confirmando com `adb
+devices` que o dispositivo físico conectado aparece como `device`
+(autorizado).
+
+**Arquivo alterado**: `app/rooms/routes.py` (`_resolve_adb_path`,
+`install_tablet_apk`); testes ajustados em `tests/test_tablet_apk_install.py`.
+
+**Lição para o futuro**: nunca assumir que uma ferramenta de linha de comando
+usada por outro programa (IDE, Flutter, Android Studio) está no `PATH` do
+sistema só porque ela "funciona" nesse ambiente - muitas ferramentas de
+desenvolvimento resolvem o caminho de binários por variáveis de ambiente
+próprias (`ANDROID_HOME`, `JAVA_HOME`, etc.), não pelo `PATH` do shell. Código
+que precisa invocar esses binários via `subprocess` deve espelhar essa mesma
+lógica de resolução, não só `shutil.which`.
+
+## 5. `UnicodeDecodeError`/`TypeError` ao rodar `flutter build apk` via `subprocess` no Windows
+
+**Data**: 2026-06-23
+
+**Sintoma relatado**: ao clicar em "Instalar via USB" (que builda o app antes
+de instalar - ver item anterior), o servidor real quebrou com dois erros
+encadeados no log: primeiro um `UnicodeDecodeError: 'charmap' codec can't
+decode byte 0x90 in position 177` dentro de uma thread interna do
+`subprocess` (`_readerthread`), e na sequência um `TypeError: unsupported
+operand type(s) for +: 'NoneType' and 'str'` na linha que concatena
+`build_result.stdout + build_result.stderr`. No navegador, isso apareceu como
+`SyntaxError: Unexpected token '<', "<!doctype "... is not valid JSON` -
+porque o front-end tentava interpretar a página de erro 500 (HTML) como JSON.
+
+**Causa raiz**: `subprocess.run(..., text=True)` sem um `encoding` explícito
+usa, no Windows, a codificação padrão do console (`cp1252` nesta máquina), não
+UTF-8. A saída do `flutter build apk`/Gradle contém caracteres (acentos,
+símbolos de progresso) fora do intervalo válido de `cp1252`. Quando a thread
+interna do `subprocess` que lê `stdout` encontrava um desses bytes (`0x90`),
+o decode falhava silenciosamente *dentro da thread* - o `subprocess.run`
+não propagava essa exceção pra cima, só deixava `build_result.stdout`/
+`stderr` como `None`. A linha seguinte, que soma os dois (`stdout + stderr`),
+quebrava com `TypeError` por tentar somar `None` com `str`. Do lado do
+front-end, o `fetch().then(res => res.json())` assumia que toda resposta era
+JSON e quebrava com um erro confuso ao receber a página HTML de erro 500 do
+Flask.
+
+**Diagnóstico**: o próprio traceback enviado pelo usuário já mostrava as duas
+exceções encadeadas, na ordem certa (decode dentro de `_readerthread`,
+depois o `TypeError` na linha de concatenação) - bastou ler o stack trace.
+Reproduzido isoladamente rodando um subprocesso que escreve o byte `0x90` cru
+em `stdout`: com `text=True` (sem `encoding`), o decode falha; com
+`encoding="utf-8", errors="replace"`, o byte inválido é substituído (`�`) sem
+derrubar o processo.
+
+**Correção**: todas as chamadas a `subprocess.run` em `install_tablet_apk()`
+(`flutter build apk`, `adb devices`, `adb install`, `adb reverse`) passaram a
+usar `encoding="utf-8", errors="replace"` em vez de `text=True` puro - bytes
+fora do esperado viram `�` em vez de derrubar a leitura. Como reforço, toda
+concatenação de `stdout`/`stderr` passou a usar `(x.stdout or "") + (x.stderr
+or "")`, pra nunca mais quebrar com `TypeError` se algum dia `None` aparecer
+por outro motivo. No front-end, o `fetch` agora confere o `content-type` da
+resposta antes de chamar `res.json()`, mostrando uma mensagem clara em vez do
+`SyntaxError` quando o servidor responde com uma página de erro HTML.
+
+**Arquivo alterado**: `app/rooms/routes.py` (`install_tablet_apk`);
+`app/templates/rooms/settings.html` (handler do `fetch`).
+
+**Lição para o futuro**: em qualquer `subprocess.run`/`Popen` com `text=True`
+(ou `universal_newlines=True`) no Windows, especificar sempre `encoding` e
+`errors` explicitamente (`encoding="utf-8", errors="replace"` é o padrão mais
+seguro) - o encoding padrão do console do Windows quase nunca é UTF-8, e
+saída de ferramentas modernas (Flutter, Node, etc.) quase sempre contém
+caracteres fora de `cp1252`. Além disso, qualquer código no servidor que
+devolve JSON pra um `fetch()` precisa que TODOS os caminhos de erro
+(`try/except`, exceções não tratadas) também devolvam JSON - senão o
+front-end recebe a página de erro HTML do framework e quebra de um jeito que
+não aponta pra causa real.

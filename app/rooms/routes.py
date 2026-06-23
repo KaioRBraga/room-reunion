@@ -1,6 +1,10 @@
+import os
 import re
 import secrets
+import shutil
+import subprocess
 from datetime import datetime
+from pathlib import Path
 
 from flask import (
     Response,
@@ -368,6 +372,191 @@ def reset_layout_config():
     db.session.commit()
     flash("Layout do painel restaurado para o padrão.", "success")
     return redirect(url_for("rooms.settings_index", tab="layout"))
+
+
+def _resolve_adb_path():
+    """Localiza o `adb`: primeiro no PATH, depois no Android SDK apontado por
+    `ANDROID_HOME`/`ANDROID_SDK_ROOT`. O Flutter/Android Studio normalmente
+    enxergam o SDK por essas variáveis sem nunca adicionar `platform-tools`
+    ao PATH do sistema - confiar só em `shutil.which("adb")` falha mesmo
+    numa máquina onde `adb` funciona perfeitamente pelo terminal do Flutter.
+    """
+    found = shutil.which("adb")
+    if found:
+        return found
+    for env_var in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
+        sdk_root = os.environ.get(env_var)
+        if not sdk_root:
+            continue
+        found = shutil.which("adb", path=str(Path(sdk_root) / "platform-tools"))
+        if found:
+            return found
+    return None
+
+
+def _resolve_flutter_path():
+    """Localiza o `flutter`: PATH primeiro, depois `FLUTTER_ROOT` + `bin/`
+    (variável que o próprio SDK do Flutter define em alguns setups), mesma
+    lógica de fallback usada para o `adb` em `_resolve_adb_path`.
+    """
+    found = shutil.which("flutter")
+    if found:
+        return found
+    sdk_root = os.environ.get("FLUTTER_ROOT")
+    if sdk_root:
+        found = shutil.which("flutter", path=str(Path(sdk_root) / "bin"))
+        if found:
+            return found
+    return None
+
+
+def _request_server_port():
+    """Porta em que este servidor Flask está sendo acessado agora (do header
+    `Host`, montado pelo navegador). Usada pro `adb reverse`: o app recém
+    instalado costuma estar configurado pra testar contra `127.0.0.1:<porta>`
+    (ver `BUGS.md` #2) - sem espelhar essa porta pro dispositivo via USB, a
+    primeira tela depois da instalação é só "Connection refused".
+    """
+    host = request.host
+    if ":" in host:
+        port = host.rsplit(":", 1)[1]
+        if port.isdigit():
+            return port
+    return "5000"
+
+
+def _tablet_apk_path():
+    """Caminho do último APK gerado por `flutter build apk` em `display_app/`.
+
+    Prioriza o build de release; cai pro de debug se for o único disponível
+    (útil ao testar antes de publicar uma versão de release).
+    """
+    build_dir = Path(current_app.root_path).parent / "display_app" / "build" / "app" / "outputs" / "flutter-apk"
+    for name in ("app-release.apk", "app-debug.apk"):
+        candidate = build_dir / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+@rooms_bp.route("/layout/install-apk", methods=["POST"])
+@admin_required
+def install_tablet_apk():
+    """Instala o APK do painel via `adb` num dispositivo conectado por USB nesta máquina.
+
+    Só funciona quando o navegador acessa o servidor a partir da própria máquina
+    onde o tablet está plugado - `adb` enxerga apenas dispositivos USB locais.
+    """
+    adb_path = _resolve_adb_path()
+    if not adb_path:
+        return jsonify({
+            "ok": False,
+            "error": "'adb' não encontrado no PATH desta máquina. Instale o Android SDK Platform Tools.",
+        }), 400
+
+    flutter_path = _resolve_flutter_path()
+    if not flutter_path:
+        return jsonify({
+            "ok": False,
+            "error": "'flutter' não encontrado no PATH desta máquina nem via FLUTTER_ROOT. "
+            "Instale o Flutter SDK ou rode 'flutter build apk' manualmente em display_app/.",
+        }), 400
+
+    display_app_dir = Path(current_app.root_path).parent / "display_app"
+    try:
+        build_result = subprocess.run(
+            [flutter_path, "build", "apk"],
+            cwd=str(display_app_dir),
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=600,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return jsonify({"ok": False, "error": f"Falha ao executar 'flutter build apk': {exc}"}), 500
+
+    build_log = ((build_result.stdout or "") + (build_result.stderr or "")).strip()
+    if build_result.returncode != 0:
+        return jsonify({
+            "ok": False,
+            "error": "Falha ao gerar o APK ('flutter build apk'). Veja o log abaixo.",
+            "log": build_log[-4000:],
+        }), 500
+
+    apk_path = _tablet_apk_path()
+    if apk_path is None:
+        return jsonify({
+            "ok": False,
+            "error": "O build terminou sem erro, mas nenhum APK foi encontrado em display_app/build/.",
+            "log": build_log[-4000:],
+        }), 500
+
+    try:
+        devices_result = subprocess.run(
+            [adb_path, "devices"], capture_output=True, encoding="utf-8", errors="replace", timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return jsonify({"ok": False, "error": f"Falha ao executar 'adb devices': {exc}"}), 500
+
+    device_ids = []
+    for line in devices_result.stdout.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] == "device":
+            device_ids.append(parts[0])
+
+    if not device_ids:
+        return jsonify({
+            "ok": False,
+            "error": "Nenhum dispositivo autorizado encontrado. Conecte o tablet via USB e habilite a "
+            "depuração USB (e aceite o aviso de autorização no próprio aparelho).",
+            "log": ((devices_result.stdout or "") + (devices_result.stderr or "")).strip(),
+        }), 400
+
+    results = []
+    overall_ok = True
+    for device_id in device_ids:
+        try:
+            install_result = subprocess.run(
+                [adb_path, "-s", device_id, "install", "-r", str(apk_path)],
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=120,
+            )
+            output = ((install_result.stdout or "") + (install_result.stderr or "")).strip()
+            success = install_result.returncode == 0 and "Success" in (install_result.stdout or "")
+        except (OSError, subprocess.SubprocessError) as exc:
+            output = str(exc)
+            success = False
+
+        if success:
+            port = _request_server_port()
+            try:
+                reverse_result = subprocess.run(
+                    [adb_path, "-s", device_id, "reverse", f"tcp:{port}", f"tcp:{port}"],
+                    capture_output=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=15,
+                )
+                if reverse_result.returncode == 0:
+                    reverse_log = (
+                        f"adb reverse tcp:{port} tcp:{port} configurado - o app pode usar "
+                        f"http://127.0.0.1:{port} pra testar contra este servidor."
+                    )
+                else:
+                    reverse_log = (
+                        f"Falha ao configurar 'adb reverse': "
+                        f"{((reverse_result.stdout or '') + (reverse_result.stderr or '')).strip()}"
+                    )
+            except (OSError, subprocess.SubprocessError) as exc:
+                reverse_log = f"Falha ao configurar 'adb reverse': {exc}"
+            output = f"{output}\n{reverse_log}".strip()
+
+        overall_ok = overall_ok and success
+        results.append({"device": device_id, "ok": success, "log": output})
+
+    return jsonify({"ok": overall_ok, "apk": apk_path.name, "results": results})
 
 
 _BRANDING_COLOR_FIELDS = ("primary_color", "secondary_color")

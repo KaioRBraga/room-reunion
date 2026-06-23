@@ -240,6 +240,26 @@
                     aparecem na tela. A mudança vale para todos os painéis na próxima atualização (até 15s).
                 </p>
 
+                <div class="card mb-3" id="apkInstallCard">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div>
+                                <h6 class="card-title mb-1">Instalar app no tablet</h6>
+                                <p class="text-muted small mb-0">
+                                    Conecte o tablet/celular via USB nesta máquina (com a depuração USB
+                                    habilitada) e clique para buildar (<code>flutter build apk</code>) e
+                                    instalar (<code>adb install</code>) a versão mais recente do app, sem
+                                    precisar abrir o terminal - pode levar alguns minutos. Depois de instalar,
+                                    também configura <code>adb reverse</code> nesta porta, para o app testar
+                                    direto contra <code>http://127.0.0.1</code> sem precisar do IP de rede.
+                                </p>
+                            </div>
+                            <button type="button" class="btn btn-outline-primary text-nowrap" id="installApkBtn">Instalar via USB</button>
+                        </div>
+                        <pre class="small mt-3 mb-0 d-none" id="installApkLog" style="white-space: pre-wrap; max-height: 220px; overflow-y: auto;"></pre>
+                    </div>
+                </div>
+
                 <form method="post" action="{{ url_for('rooms.update_layout_config') }}" enctype="multipart/form-data" id="layoutForm">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="row g-4">
@@ -616,6 +636,50 @@ document.getElementById("reportGroupFilterInput")?.addEventListener("input", fun
             document.getElementById("previewTabletLogoThumb").src = ev.target.result;
         };
         reader.readAsDataURL(file);
+    });
+})();
+
+(function () {
+    const btn = document.getElementById("installApkBtn");
+    const log = document.getElementById("installApkLog");
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+    btn.addEventListener("click", function () {
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Buildando...";
+        log.classList.remove("d-none", "text-danger", "text-success");
+        log.textContent = "Rodando 'flutter build apk' (pode levar alguns minutos)...";
+
+        fetch("{{ url_for('rooms.install_tablet_apk') }}", {
+            method: "POST",
+            headers: { "X-CSRFToken": csrfToken },
+        })
+            .then(function (res) {
+                const isJson = (res.headers.get("content-type") || "").includes("application/json");
+                if (!isJson) {
+                    throw new Error("O servidor respondeu com erro inesperado (HTTP " + res.status + "). Veja o log do servidor.");
+                }
+                return res.json();
+            })
+            .then(function (data) {
+                const lines = [];
+                if (data.error) lines.push(data.error);
+                (data.results || []).forEach(function (r) {
+                    lines.push((r.ok ? "OK  " : "ERRO ") + r.device + ": " + (r.log || (r.ok ? "instalado" : "falhou")));
+                });
+                if (data.log) lines.push(data.log);
+                log.textContent = lines.join("\n") || "Sem retorno do servidor.";
+                log.classList.add(data.ok ? "text-success" : "text-danger");
+            })
+            .catch(function (err) {
+                log.textContent = "Erro ao chamar o servidor: " + err;
+                log.classList.add("text-danger");
+            })
+            .finally(function () {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            });
     });
 })();
 </script>
