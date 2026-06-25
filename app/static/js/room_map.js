@@ -15,7 +15,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const capacityInput = document.getElementById("roomPinCapacity");
     const equipmentCheckboxes = Array.from(document.querySelectorAll(".room-pin-equipment-checkbox"));
     const equipmentOtherInput = document.getElementById("roomPinEquipmentOther");
-    const availabilityInput = document.getElementById("roomPinAvailability");
     const businessStartInput = document.getElementById("roomPinBusinessStart");
     const businessEndInput = document.getElementById("roomPinBusinessEnd");
     const saveBtn = document.getElementById("roomPinSaveBtn");
@@ -25,7 +24,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const fields = [
         nameInput,
         capacityInput,
-        availabilityInput,
         businessStartInput,
         businessEndInput,
         equipmentOtherInput,
@@ -154,7 +152,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 nameInput.value = "";
                 capacityInput.value = "";
                 setEquipmentForm("");
-                availabilityInput.value = "";
                 businessStartInput.value = "";
                 businessEndInput.value = "";
                 modal.show();
@@ -187,7 +184,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 nameInput.value = room.name;
                 capacityInput.value = room.capacity;
                 setEquipmentForm(room.equipment_notes);
-                availabilityInput.value = room.availability_notes;
                 businessStartInput.value = room.business_hours_start || "";
                 businessEndInput.value = room.business_hours_end || "";
 
@@ -233,7 +229,6 @@ document.addEventListener("DOMContentLoaded", function () {
             name: nameInput.value.trim(),
             capacity: parseInt(capacityInput.value, 10),
             equipment_notes: getEquipmentNotes(),
-            availability_notes: availabilityInput.value.trim(),
             business_hours_start: businessStartInput.value,
             business_hours_end: businessEndInput.value,
         };
@@ -245,6 +240,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!pendingPos) return;
             payload.pos_x = pendingPos.x;
             payload.pos_y = pendingPos.y;
+            payload.floor_id = window.READYROOM_CURRENT_FLOOR_ID;
         }
 
         fetch(url, {
@@ -533,6 +529,7 @@ document.addEventListener("DOMContentLoaded", function () {
             height: 450,
             locale: "pt-br",
             headerToolbar: { left: "prev,next today", center: "title", right: "timeGridDay,timeGridWeek" },
+            buttonText: { today: "Hoje", week: "Semana", day: "Dia" },
             slotMinTime: "07:00:00",
             slotMaxTime: "21:00:00",
             selectable: true,

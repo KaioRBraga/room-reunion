@@ -16,7 +16,10 @@ class QrScanScreen extends StatefulWidget {
 }
 
 class _QrScanScreenState extends State<QrScanScreen> {
-  final MobileScannerController _controller = MobileScannerController();
+  // autoZoom: a câmera comum do celular ajusta zoom/foco sozinha e lê esse QR
+  // sem problema - o MobileScannerController não faz isso por padrão, e sem
+  // dar zoom ele não resolve os módulos do QR a uma distância normal da tela.
+  final MobileScannerController _controller = MobileScannerController(autoZoom: true);
   bool _handled = false;
 
   @override

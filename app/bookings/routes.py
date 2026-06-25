@@ -3,6 +3,7 @@ from tracemalloc import start
 
 from flask import abort, jsonify, render_template, request
 from flask_login import current_user, login_required
+from sqlalchemy.orm import joinedload
 
 from app.auth.services import search_users
 from app.bookings import bookings_bp
@@ -14,7 +15,7 @@ from app.bookings.services import (
     create_booking,
 )
 from app.extensions import db
-from app.models import Booking, Room, localnow
+from app.models import Booking, Floor, Room, Unit, localnow
 
 ROOM_COLOR_PALETTE = [
     "#0d6efd",
@@ -72,7 +73,12 @@ def _booking_to_event(booking):
 @bookings_bp.route("/")
 @login_required
 def calendar_view():
-    rooms = Room.query.filter_by(is_active=True).order_by(Room.name).all()
+    rooms = (
+        Room.query.filter_by(is_active=True)
+        .options(joinedload(Room.floor))
+        .order_by(Room.name)
+        .all()
+    )
     rooms_json = [
         {
             "id": room.id,
@@ -82,11 +88,13 @@ def calendar_view():
         }
         for room in rooms
     ]
+    units = Unit.query.order_by(Unit.name).all()
     selected_room_id = request.args.get("room_id", type=int)
     return render_template(
         "bookings/calendar.html",
         rooms=rooms,
         rooms_json=rooms_json,
+        units=units,
         selected_room_id=selected_room_id,
     )
 
@@ -97,6 +105,7 @@ def api_events():
     start = _parse_calendar_dt(request.args.get("start"))
     end = _parse_calendar_dt(request.args.get("end"))
     room_id = request.args.get("room_id", type=int)
+    unit_id = request.args.get("unit_id", type=int)
 
     query = Booking.query.filter(Booking.cancelled_at.is_(None))
     if start:
@@ -105,8 +114,12 @@ def api_events():
         query = query.filter(Booking.start_at < end)
     if room_id:
         query = query.filter(Booking.room_id == room_id)
-
-    
+    if unit_id:
+        query = query.filter(
+            Booking.room_id.in_(
+                db.session.query(Room.id).join(Floor, Room.floor_id == Floor.id).filter(Floor.unit_id == unit_id)
+            )
+        )
 
     return jsonify([_booking_to_event(b) for b in query.all()])
 

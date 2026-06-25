@@ -24,16 +24,17 @@ from app.extensions import db
 from app.ldap_client import LdapAuthError, list_groups
 from app.models import (
     DisplayLayoutSettings,
-    FloorMap,
+    Floor,
     ReportViewerGroup,
     Room,
     RoomBookingGroup,
     SiteBrandingSettings,
+    Unit,
 )
 from app.rooms import rooms_bp
 from app.rooms.branding_storage import InvalidLogoFileError, delete_logo_file, save_uploaded_logo
 from app.rooms.forms import EQUIPMENT_OPTIONS, RoomForm, half_hour_choices
-from app.rooms.map_storage import InvalidMapFileError, map_image_path, save_uploaded_map
+from app.rooms.map_storage import InvalidMapFileError, delete_map_file, map_image_path, save_uploaded_map
 
 
 def _room_to_pin(room):
@@ -70,28 +71,39 @@ def _parse_time_field(value):
 @rooms_bp.route("/")
 @login_required
 def map_view():
-    floor_map = FloorMap.query.first()
-    pinned_rooms = Room.query.filter(
-        Room.is_active.is_(True),
-        Room.pos_x.isnot(None),
-        Room.pos_y.isnot(None),
-    ).all()
+    units = Unit.query.order_by(Unit.name).all()
+
+    floor_id = request.args.get("floor_id", type=int)
+    current_floor = db.session.get(Floor, floor_id) if floor_id else None
+    if current_floor is None:
+        current_floor = Floor.query.order_by(Floor.id).first()
+
+    pinned_rooms = []
+    if current_floor is not None:
+        pinned_rooms = Room.query.filter(
+            Room.is_active.is_(True),
+            Room.floor_id == current_floor.id,
+            Room.pos_x.isnot(None),
+            Room.pos_y.isnot(None),
+        ).all()
+
     return render_template(
         "rooms/map.html",
-        floor_map=floor_map,
+        units=units,
+        current_floor=current_floor,
         pinned_rooms=pinned_rooms,
         time_choices=half_hour_choices(),
         equipment_options=EQUIPMENT_OPTIONS,
     )
 
 
-@rooms_bp.route("/map/image")
+@rooms_bp.route("/map/image/<int:floor_id>")
 @login_required
-def map_image():
-    floor_map = FloorMap.query.first()
-    if floor_map is None:
+def map_image(floor_id):
+    floor = db.get_or_404(Floor, floor_id)
+    if not floor.filename:
         abort(404)
-    with open(map_image_path(floor_map), "rb") as f:
+    with open(map_image_path(floor), "rb") as f:
         data = f.read()
     return Response(data, mimetype="image/png")
 
@@ -99,18 +111,116 @@ def map_image():
 @rooms_bp.route("/map/upload", methods=["POST"])
 @admin_required
 def upload_map():
+    floor = db.get_or_404(Floor, request.form.get("floor_id", type=int) or 0)
+
     file = request.files.get("map_file")
     if not file or not file.filename:
         flash("Selecione um arquivo para enviar.", "warning")
-        return redirect(url_for("rooms.map_view"))
+        return _redirect_to_floors_tab()
 
     try:
-        save_uploaded_map(file, uploaded_by=current_user.username)
+        save_uploaded_map(file, uploaded_by=current_user.username, floor=floor)
         flash("Mapa atualizado com sucesso.", "success")
     except InvalidMapFileError as exc:
         flash(str(exc), "danger")
 
-    return redirect(url_for("rooms.map_view"))
+    return _redirect_to_floors_tab()
+
+
+def _redirect_to_floors_tab():
+    return redirect(url_for("rooms.settings_index", tab="floors"))
+
+
+@rooms_bp.route("/units", methods=["POST"])
+@admin_required
+def create_unit():
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("Informe um nome para a unidade.", "warning")
+        return _redirect_to_floors_tab()
+    if Unit.query.filter_by(name=name).first():
+        flash(f"Já existe uma unidade chamada '{name}'.", "warning")
+        return _redirect_to_floors_tab()
+    unit = Unit(name=name)
+    db.session.add(unit)
+    db.session.commit()
+    flash(f"Unidade '{name}' criada.", "success")
+    return _redirect_to_floors_tab()
+
+
+@rooms_bp.route("/units/<int:unit_id>/rename", methods=["POST"])
+@admin_required
+def rename_unit(unit_id):
+    unit = db.get_or_404(Unit, unit_id)
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("Informe um nome para a unidade.", "warning")
+        return _redirect_to_floors_tab()
+    unit.name = name
+    db.session.commit()
+    flash("Unidade renomeada.", "success")
+    return _redirect_to_floors_tab()
+
+
+@rooms_bp.route("/units/<int:unit_id>/delete", methods=["POST"])
+@admin_required
+def delete_unit(unit_id):
+    unit = db.get_or_404(Unit, unit_id)
+    if unit.floors.count() > 0:
+        flash("Não é possível excluir uma unidade com andares - exclua os andares primeiro.", "danger")
+        return _redirect_to_floors_tab()
+    name = unit.name
+    db.session.delete(unit)
+    db.session.commit()
+    flash(f"Unidade '{name}' excluída.", "info")
+    return _redirect_to_floors_tab()
+
+
+@rooms_bp.route("/units/<int:unit_id>/floors", methods=["POST"])
+@admin_required
+def create_floor(unit_id):
+    unit = db.get_or_404(Unit, unit_id)
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("Informe um nome para o andar.", "warning")
+        return _redirect_to_floors_tab()
+    if Floor.query.filter_by(unit_id=unit.id, name=name).first():
+        flash(f"Já existe um andar chamado '{name}' nessa unidade.", "warning")
+        return _redirect_to_floors_tab()
+    floor = Floor(unit_id=unit.id, name=name)
+    db.session.add(floor)
+    db.session.commit()
+    flash(f"Andar '{name}' criado.", "success")
+    return _redirect_to_floors_tab()
+
+
+@rooms_bp.route("/floors/<int:floor_id>/rename", methods=["POST"])
+@admin_required
+def rename_floor(floor_id):
+    floor = db.get_or_404(Floor, floor_id)
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("Informe um nome para o andar.", "warning")
+        return _redirect_to_floors_tab()
+    floor.name = name
+    db.session.commit()
+    flash("Andar renomeado.", "success")
+    return _redirect_to_floors_tab()
+
+
+@rooms_bp.route("/floors/<int:floor_id>/delete", methods=["POST"])
+@admin_required
+def delete_floor(floor_id):
+    floor = db.get_or_404(Floor, floor_id)
+    if floor.rooms.count() > 0:
+        flash("Não é possível excluir um andar com salas - mova ou desative as salas primeiro.", "danger")
+        return _redirect_to_floors_tab()
+    name = floor.name
+    delete_map_file(floor)
+    db.session.delete(floor)
+    db.session.commit()
+    flash(f"Andar '{name}' excluído.", "info")
+    return _redirect_to_floors_tab()
 
 
 @rooms_bp.route("/pins", methods=["POST"])
@@ -119,10 +229,20 @@ def create_pin():
     data = request.get_json(silent=True) or {}
     name = (data.get("name") or "").strip()
     equipment_notes = (data.get("equipment_notes") or "").strip() or None
-    availability_notes = (data.get("availability_notes") or "").strip() or None
+    floor_id = data.get("floor_id")
 
-    if not name or data.get("capacity") is None or data.get("pos_x") is None or data.get("pos_y") is None:
-        return jsonify({"error": "Nome, capacidade e posição no mapa são obrigatórios."}), 400
+    if (
+        not name
+        or data.get("capacity") is None
+        or data.get("pos_x") is None
+        or data.get("pos_y") is None
+        or not floor_id
+    ):
+        return jsonify({"error": "Nome, capacidade, posição no mapa e andar são obrigatórios."}), 400
+
+    floor = db.session.get(Floor, floor_id)
+    if floor is None:
+        return jsonify({"error": "Andar inválido."}), 400
 
     try:
         capacity = int(data["capacity"])
@@ -146,7 +266,7 @@ def create_pin():
         name=name,
         capacity=capacity,
         equipment_notes=equipment_notes,
-        availability_notes=availability_notes,
+        floor_id=floor.id,
         pos_x=pos_x,
         pos_y=pos_y,
         business_hours_start=business_hours_start,
@@ -238,12 +358,15 @@ def unpin_room(room_id):
 def discard_room(room_id):
     """Arrastar o pin pra lixeira no mapa: tira do mapa E desativa a sala.
 
+    `pos_x`/`pos_y` são mantidos (não zerados) só pra registro - a sala não
+    aparece no mapa enquanto `is_active` for `False` (ver filtro em
+    `map_view`), e ao restaurar (`restore_room`) o pin volta exatamente pra
+    onde estava.
+
     Diferente do botão "Remover do mapa" (`unpin_room`), que só limpa a
     posição e mantém a sala ativa/reservável pelo calendário.
     """
     room = db.get_or_404(Room, room_id)
-    room.pos_x = None
-    room.pos_y = None
     room.is_active = False
     db.session.commit()
     return jsonify({"status": "discarded"})
@@ -254,6 +377,16 @@ def discard_room(room_id):
 def trash_rooms():
     rooms = Room.query.filter(Room.is_active.is_(False)).order_by(Room.name).all()
     return render_template("rooms/trash.html", rooms=rooms)
+
+
+@rooms_bp.route("/<int:room_id>/restore", methods=["POST"])
+@admin_required
+def restore_room(room_id):
+    room = db.get_or_404(Room, room_id)
+    room.is_active = True
+    db.session.commit()
+    flash(f"Sala '{room.name}' restaurada.", "success")
+    return redirect(url_for("rooms.trash_rooms"))
 
 
 @rooms_bp.route("/<int:room_id>/delete-permanently", methods=["POST"])
@@ -269,7 +402,7 @@ def permanently_delete_room(room_id):
     return redirect(url_for("rooms.trash_rooms"))
 
 
-_SETTINGS_TABS = {"rooms", "devices", "layout", "permissions"}
+_SETTINGS_TABS = {"rooms", "devices", "layout", "permissions", "floors"}
 _LAYOUT_COLOR_FIELDS = ("color_available", "color_starting_soon", "color_in_use")
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -319,6 +452,7 @@ def settings_index():
         ad_groups_error=ad_groups_error,
         ad_group_prefixes=current_app.config["AD_GROUP_PREFIXES"],
         allowed_report_group_cns=set(ReportViewerGroup.allowed_cns()),
+        units=Unit.query.order_by(Unit.name).all(),
     )
 
 

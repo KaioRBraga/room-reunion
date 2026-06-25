@@ -43,8 +43,16 @@ class ApiClient {
   Future<DisplayStatus> extend({int minutes = 15}) =>
       _post('/api/display/extend', body: {'minutes': minutes});
 
-  Future<DisplayStatus> startNow({String title = 'Reunião via painel'}) =>
-      _post('/api/display/start-now', body: {'title': title});
+  Future<DisplayStatus> startNow({
+    required String username,
+    required String pin,
+    String title = 'Reunião via painel',
+  }) =>
+      _post('/api/display/start-now', body: {
+        'username': username,
+        'pin': pin,
+        'title': title,
+      });
 
   Future<DisplayStatus> book({
     required String username,

@@ -30,11 +30,12 @@ def create_app(config_class=Config):
     app.register_blueprint(reports_bp)
 
     from app import models  # noqa: F401
-    from app.schema_migrations import ensure_columns
+    from app.schema_migrations import ensure_columns, ensure_default_floor
 
     with app.app_context():
         db.create_all()
         ensure_columns(db)
+        ensure_default_floor(db)
 
     @app.route("/")
     def index():

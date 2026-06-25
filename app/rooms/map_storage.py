@@ -7,7 +7,7 @@ from flask import current_app
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.extensions import db
-from app.models import FloorMap
+from app.models import localnow
 
 ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
 PDF_RENDER_ZOOM = 2  # ~144 dpi, boa legibilidade sem gerar arquivos enormes
@@ -52,21 +52,20 @@ def _render_image_to_png(data, dest_path):
         raise InvalidMapFileError("Não foi possível processar a imagem enviada.") from exc
 
 
-def _delete_current_map_file():
-    current = FloorMap.query.first()
-    if current is None:
+def delete_map_file(floor):
+    """Remove do disco o arquivo de planta atual do andar (a linha do `Floor` em si não é tocada)."""
+    if not floor.filename:
         return
-    old_path = os.path.join(_maps_dir(), current.filename)
+    old_path = os.path.join(_maps_dir(), floor.filename)
     if os.path.exists(old_path):
         try:
             os.remove(old_path)
         except OSError:
             current_app.logger.warning("Não foi possível remover o mapa antigo: %s", old_path)
-    db.session.delete(current)
 
 
-def save_uploaded_map(file_storage, uploaded_by):
-    """Converte o arquivo enviado (PDF/JPG/PNG) em PNG e persiste como o mapa atual."""
+def save_uploaded_map(file_storage, uploaded_by, floor):
+    """Converte o arquivo enviado (PDF/JPG/PNG) em PNG e persiste como a planta do andar."""
     original_filename = file_storage.filename or ""
     ext = os.path.splitext(original_filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -84,17 +83,15 @@ def save_uploaded_map(file_storage, uploaded_by):
     else:
         _render_image_to_png(data, dest_path)
 
-    _delete_current_map_file()
+    delete_map_file(floor)
 
-    floor_map = FloorMap(
-        filename=new_filename,
-        original_filename=original_filename,
-        uploaded_by=uploaded_by,
-    )
-    db.session.add(floor_map)
+    floor.filename = new_filename
+    floor.original_filename = original_filename
+    floor.uploaded_by = uploaded_by
+    floor.uploaded_at = localnow()
     db.session.commit()
-    return floor_map
+    return floor
 
 
-def map_image_path(floor_map):
-    return os.path.join(_maps_dir(), floor_map.filename)
+def map_image_path(floor):
+    return os.path.join(_maps_dir(), floor.filename)

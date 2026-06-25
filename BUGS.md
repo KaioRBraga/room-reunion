@@ -264,3 +264,188 @@ devolve JSON pra um `fetch()` precisa que TODOS os caminhos de erro
 (`try/except`, exceções não tratadas) também devolvam JSON - senão o
 front-end recebe a página de erro HTML do framework e quebra de um jeito que
 não aponta pra causa real.
+
+## 6. QR code de pareamento do tablet não era detectado pela câmera do app (mesmo QR legível por câmera comum)
+
+**Data**: 2026-06-24
+
+**Sintoma relatado**: ao tentar parear um tablet com uma sala pela tela
+"Escanear QR code" do app `display_app`, a câmera abria normalmente (preview
+ao vivo, sem erro de permissão) mas nunca detectava o QR code mostrado na aba
+"Dispositivos" do admin - testado em 4 dispositivos Android diferentes,
+todos com o mesmo resultado. O pareamento funcionava antes (não era a
+primeira tentativa naquele tablet).
+
+**Causa raiz**: duas causas, uma contribuinte e uma decisiva.
+
+1. (Contribuinte) `new QRCode(el, {...})` em
+`app/templates/rooms/settings.html` nunca especificava `correctLevel`, então
+usava o padrão da biblioteca `qrcodejs@1.0.0` (`H`, o nível de correção de
+erro mais redundante = QR mais denso). Para o payload típico (`{"url":...,
+"token":...}`, ~86 bytes), isso gerava um QR versão 9 (53x53 módulos) numa
+caixa de 160px - só ~3px por módulo, próximo do limite que uma câmera
+consegue resolver fotografando uma tela.
+2. (Decisiva) `MobileScannerController()` em
+`display_app/lib/screens/qr_scan_screen.dart` era instanciado sem nenhuma
+opção - e o pacote `mobile_scanner` tem `autoZoom` (zoom automático quando o
+código está longe/pequeno demais no quadro) desabilitado por padrão
+(`autoZoom: false`). Sem isso, o scanner nunca dava zoom suficiente pra
+resolver os módulos do QR a uma distância normal de uso, mesmo com um QR
+tecnicamente válido.
+
+**Diagnóstico**: descartada regressão de código (`git log` não mostrava
+nenhum arquivo de QR alterado recentemente). Validada a biblioteca de
+geração baixando o arquivo exato servido pelo CDN (`qrcodejs@1.0.0`) e
+executando isoladamente em Node (`vm.runInThisContext`, com stubs mínimos de
+`document`), confirmando que a codificação real (`addData`/`make()`) não
+lança erro de overflow para os tamanhos de payload reais do projeto.
+Validado também que o QR renderizado de fato decodifica corretamente:
+renderizada a mesma página num Chrome real via Puppeteer, capturada a
+screenshot do `.qr-box` e decodificada com `jsQR` - decodificou certo,
+descartando problema na geração/exibição. Teste decisivo: pedido ao usuário
+pra apontar a câmera comum do celular (fora do app) pro mesmo QR - leu sem
+problema, isolando o bug como específico do `MobileScannerController` do
+app. Inspecionado o pacote `mobile_scanner` localmente (pub cache) e
+encontrada a opção `autoZoom`, documentada exatamente para esse cenário
+("Whether the camera should auto zoom if the detected code is too far from
+the camera").
+
+**Correção**: `app/templates/rooms/settings.html` passou a renderizar o QR
+com `correctLevel: QRCode.CorrectLevel.L` e caixa de 220px (em vez de
+H/160px); `display_app/lib/screens/qr_scan_screen.dart` passou a instanciar
+`MobileScannerController(autoZoom: true)`.
+
+**Arquivo alterado**: `app/templates/rooms/settings.html`;
+`display_app/lib/screens/qr_scan_screen.dart`. A segunda alteração exige
+rebuild + reinstalação do APK nos tablets para ter efeito - não é hot-reload
+de servidor.
+
+**Lição para o futuro**: um QR code "visualmente normal" e que decodifica
+corretamente num teste controlado (screenshot + decoder) ainda pode falhar
+na prática numa câmera real - distância, foco e zoom da câmera importam
+tanto quanto a correção da codificação. Pacotes de scanner de barcode/QR
+costumam ter opções de auto-zoom/resolução desligadas por padrão (por custo
+de performance) que fazem toda diferença em uso real; vale checar a
+documentação de opções do controller antes de assumir que "câmera abre =
+configuração está certa". Testar com um leitor de QR genérico (câmera
+nativa, Google Lens) é o jeito mais rápido de isolar "problema no QR" vs
+"problema específico do nosso scanner".
+
+## 7. Tablet não conecta ao servidor (timeout) mesmo com QR pareado corretamente e servidor rodando
+
+**Data**: 2026-06-24
+
+**Sintoma relatado**: depois de resolver a leitura do QR (item 6), o app no
+tablet mostrava "Não foi possível conectar ao servidor em
+http://10.100.1.119:5000 (tempo esgotado). Verifique a rede do dispositivo e
+a URL configurada." mesmo com o servidor Flask rodando e o token/URL
+pareados corretamente.
+
+**Causa raiz**: isolamento de rede entre o Wi-Fi do tablet e a rede cabeada
+onde o servidor roda - **não é um bug de código**. Descartada qualquer causa
+do lado do servidor:
+- `run.py` já faz bind em `host="0.0.0.0"` (todas as interfaces), não só
+  `127.0.0.1`.
+- Já existia uma regra de firewall do Windows (`ReadyRoom Flask (porta
+  5000)`) liberando entrada TCP na porta 5000 para os perfis Domain e
+  Private, `Program: Any`, `RemoteAddress: Any`.
+- O perfil de rede ativo da interface correspondente (`Ethernet 4`, NIC
+  física Intel I219-LM) é `DomainAuthenticated`, coberto pela regra acima.
+- O IP atual da máquina (`10.100.1.119`) é exatamente o IP que o tablet
+  tentou alcançar - não é configuração desatualizada/IP trocado.
+- `Test-NetConnection -ComputerName 10.100.1.119 -Port 5000` da própria
+  máquina teve sucesso (`TcpTestSucceeded: True`), confirmando que o Flask
+  está escutando e respondendo normalmente na interface de rede.
+
+Com servidor, firewall e bind todos corretos, a única explicação restante é
+a rede do tablet (Wi-Fi) não ter rota até a rede cabeada `10.100.0.0/21` onde
+a máquina está - confirmado pelo usuário, que já sabia que o tablet está numa
+rede Wi-Fi separada/isolada da rede cabeada.
+
+**Diagnóstico**: eliminação sistemática de causas do lado do servidor (bind,
+firewall, IP, conectividade TCP local) com PowerShell (`Get-NetIPAddress`,
+`Get-NetFirewallRule`, `Get-NetConnectionProfile`, `Test-NetConnection`)
+antes de concluir que a causa é de rede/infraestrutura, fora do código deste
+projeto.
+
+**Correção**: nenhuma alteração de código - não há nada no código deste
+projeto que resolva isolamento de rede entre dois dispositivos físicos. Ação
+necessária é de infraestrutura de rede, uma das opções:
+1. Colocar o tablet numa rede Wi-Fi com rota até a rede cabeada
+   `10.100.0.0/21` (ação de TI/infra).
+2. Hospedar o backend Flask em algum lugar acessível por ambas as redes
+   (servidor central em vez da máquina de desenvolvimento).
+3. O recurso "Instalar via USB" (`adb reverse` + `127.0.0.1`, ver item 4) só
+   serve com o tablet conectado por cabo USB na máquina - não resolve o uso
+   final do tablet fixado na sala via Wi-Fi.
+
+**Arquivo alterado**: nenhum.
+
+**Lição para o futuro**: antes de suspeitar do código (bind do Flask, CORS,
+etc.) num erro de "timeout" de conexão entre dois dispositivos físicos,
+validar a pilha de rede do lado do servidor de fora para dentro: bind do
+processo -> firewall do SO -> conectividade TCP local (`Test-NetConnection`
+no próprio IP, não em `localhost`). Se tudo isso passa, o problema é
+necessariamente de roteamento/topologia de rede entre os dispositivos, não
+algo corrigível em código - vale confirmar isso explicitamente com o usuário
+(em qual rede o dispositivo cliente está) antes de continuar "caçando bug"
+em configuração de servidor.
+
+## 8. `TypeError: SQLite DateTime type only accepts Python datetime and date objects` ao subir o servidor real (migração do conceito de Andares/Unidade)
+
+**Data**: 2026-06-24
+
+**Sintoma relatado**: ao rodar `python run.py` no servidor real (com banco
+já existente, incluindo uma planta já enviada antes), `create_app()` quebrava
+na inicialização com `sqlalchemy.exc.StatementError: (builtins.TypeError)
+SQLite DateTime type only accepts Python datetime and date objects as
+input.`, no `INSERT INTO floor (...)` dentro de `ensure_default_floor()` -
+servidor não subia de forma alguma.
+
+**Causa raiz**: `ensure_default_floor()` (`app/schema_migrations.py`, ver
+BACKLOG.md item 5) lê a linha da antiga tabela `floor_map` via SQL textual
+(`db.engine.begin().execute(text("SELECT ... FROM floor_map ..."))`) pra
+migrar a planta já enviada pro novo `Floor` padrão. SQL textual executado
+direto no `Connection` (Core, sem passar pelos tipos de coluna do ORM) devolve
+os valores crus do driver DBAPI, sem o result-processor que o tipo
+`db.DateTime` normalmente aplica - no SQLite, isso significa que
+`uploaded_at` veio como a `str` literal salva no banco
+(`'2026-06-18 15:56:47.206386'`), não como `datetime`. Esse valor foi
+atribuído direto em `Floor(..., uploaded_at=old_map_row.uploaded_at)`; ao
+inserir esse `Floor` via ORM, o processor do tipo `DateTime` da coluna
+exigiu um objeto `datetime`/`date` de verdade e rejeitou a `str` com
+`TypeError`.
+
+**Diagnóstico**: o próprio traceback já apontava a linha exata
+(`db.session.flush()` dentro de `ensure_default_floor`) e o tipo do
+parâmetro rejeitado (`'uploaded_at': '2026-06-18 15:56:47.206386'`, uma
+string no `[parameters]` do erro SQL). Reproduzido isoladamente criando uma
+tabela `floor_map` "antiga" manualmente (mesmo schema, uma linha com
+`uploaded_at` como string) num banco de teste, apagando o `Unit`/`Floor` que
+o próprio `create_app()` já tinha criado nesse banco vazio (pra simular um
+banco de produção que nunca tinha rodado esse código), e chamando
+`ensure_default_floor(db)` de novo - reproduziu o mesmo `TypeError` antes da
+correção.
+
+**Correção**: nova função `_parse_db_datetime()`
+(`app/schema_migrations.py`) - devolve o valor como está se já for
+`datetime`/`None`, senão usa `datetime.fromisoformat()` pra converter a
+string lida via SQL textual antes de passar pro construtor do `Floor`.
+Validado com o mesmo cenário reproduzido no diagnóstico: `Floor.uploaded_at`
+passou a vir como `datetime.datetime(2026, 6, 18, 15, 56, 47, 206386)` em
+vez de quebrar.
+
+**Arquivo alterado**: `app/schema_migrations.py` (`_parse_db_datetime`,
+`ensure_default_floor`).
+
+**Lição para o futuro**: SQL textual (`text(...)`) executado direto num
+`Connection`/`Engine` do SQLAlchemy (Core puro) não passa pelos
+result-processors dos tipos de coluna do ORM (`DateTime`, `Boolean` em
+alguns dialetos, etc.) - os valores voltam crus, como o driver DBAPI os
+devolve (no SQLite, datas/horas voltam como `str`). Sempre que ler dados de
+uma tabela "antiga" por SQL textual pra migrar pra um model ORM novo
+(padrão já usado neste projeto pra schema drift, ver item 3), converter
+explicitamente os campos de data/hora pro tipo Python esperado antes de
+atribuir num objeto do model - não basta o `db.DateTime` na coluna de
+destino, a conversão automática só acontece quando o SQLAlchemy sabe o tipo
+de origem (ORM/Core tipado), não em SQL textual cru.

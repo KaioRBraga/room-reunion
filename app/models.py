@@ -25,10 +25,16 @@ class Room(db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
-    # Posição relativa (0.0-1.0) do pin sobre a imagem do mapa atual.
+    # Posição relativa (0.0-1.0) do pin sobre a imagem do andar (`Floor`).
     # None significa que a sala ainda não foi posicionada no mapa.
     pos_x = db.Column(db.Float, nullable=True)
     pos_y = db.Column(db.Float, nullable=True)
+
+    # Andar ao qual a sala pertence. Nullable só por causa da migração leve
+    # (ALTER TABLE em banco já existente, ver app/schema_migrations.py) - na
+    # prática toda sala tem andar, preenchido automaticamente por
+    # `ensure_default_floor()` num andar padrão se a coluna vier vazia.
+    floor_id = db.Column(db.Integer, db.ForeignKey("floor.id"), nullable=True)
 
     # Token usado pelo painel/tablet da sala (app Android) para se autenticar
     # sem precisar de login AD. None = nenhum painel configurado ainda.
@@ -337,17 +343,47 @@ class ReportViewerGroup(db.Model):
         return bool(set(group_cns or []) & set(allowed))
 
 
-class FloorMap(db.Model):
-    __tablename__ = "floor_map"
+class Unit(db.Model):
+    """Prédio/site - agrupa um ou mais `Floor`."""
+
+    __tablename__ = "unit"
 
     id = db.Column(db.Integer, primary_key=True)
-    filename = db.Column(db.String(255), nullable=False)
-    original_filename = db.Column(db.String(255), nullable=False)
-    uploaded_by = db.Column(db.String(120), nullable=False)
-    uploaded_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    name = db.Column(db.String(120), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    floors = db.relationship("Floor", backref="unit", lazy="dynamic")
 
     def __repr__(self):
-        return f"<FloorMap {self.filename}>"
+        return f"<Unit {self.name}>"
+
+
+class Floor(db.Model):
+    """Andar dentro de uma `Unit`, com sua própria planta baixa.
+
+    Substitui o antigo singleton `FloorMap` (uma planta global pra todas as
+    salas) - os campos de arquivo da planta (`filename` etc.) que antes
+    viviam em `FloorMap` agora ficam aqui, um conjunto por andar.
+    """
+
+    __tablename__ = "floor"
+    __table_args__ = (db.UniqueConstraint("unit_id", "name", name="uq_floor_unit_name"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    unit_id = db.Column(db.Integer, db.ForeignKey("unit.id"), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    # Planta baixa do andar - None enquanto nenhum admin fez upload ainda.
+    filename = db.Column(db.String(255), nullable=True)
+    original_filename = db.Column(db.String(255), nullable=True)
+    uploaded_by = db.Column(db.String(120), nullable=True)
+    uploaded_at = db.Column(db.DateTime, nullable=True)
+
+    rooms = db.relationship("Room", backref="floor", lazy="dynamic")
+
+    def __repr__(self):
+        return f"<Floor {self.name} unit={self.unit_id}>"
 
 
 class Booking(db.Model):

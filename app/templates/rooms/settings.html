@@ -11,7 +11,10 @@
         <button class="nav-link {{ 'active' if active_tab == 'devices' }}" data-bs-toggle="tab" data-bs-target="#tab-devices" type="button">Dispositivos</button>
     </li>
     <li class="nav-item">
-        <button class="nav-link {{ 'active' if active_tab == 'layout' }}" data-bs-toggle="tab" data-bs-target="#tab-layout" type="button">Layout do painel</button>
+        <button class="nav-link {{ 'active' if active_tab == 'floors' }}" data-bs-toggle="tab" data-bs-target="#tab-floors" type="button">Andares</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link {{ 'active' if active_tab == 'layout' }}" data-bs-toggle="tab" data-bs-target="#tab-layout" type="button">Layout</button>
     </li>
     <li class="nav-item">
         <button class="nav-link {{ 'active' if active_tab == 'permissions' }}" data-bs-toggle="tab" data-bs-target="#tab-permissions" type="button">Permissões</button>
@@ -197,13 +200,15 @@
                                 </div>
                             </div>
 
-                            <button type="submit" class="btn btn-primary">Salvar</button>
                         </form>
-                        <form method="post" action="{{ url_for('rooms.reset_site_branding') }}" class="d-inline"
+                        <form id="siteBrandingResetForm" method="post" action="{{ url_for('rooms.reset_site_branding') }}"
                               onsubmit="return confirm('Restaurar logo e cores do site para o padrão original?');">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn btn-outline-secondary mt-2">Restaurar padrão</button>
                         </form>
+                        <div class="d-flex gap-2">
+                            <button type="submit" form="siteBrandingForm" class="btn btn-primary">Salvar</button>
+                            <button type="submit" form="siteBrandingResetForm" class="btn btn-outline-secondary">Restaurar padrão</button>
+                        </div>
                     </div>
 
                     <div class="col-lg-6">
@@ -336,7 +341,10 @@
                                 </div>
                             </div>
 
-                            <button type="submit" class="btn btn-primary">Salvar</button>
+                            <div class="d-flex gap-2">
+                                <button type="submit" form="layoutForm" class="btn btn-primary">Salvar</button>
+                                <button type="submit" form="layoutResetForm" class="btn btn-outline-secondary">Restaurar padrão</button>
+                            </div>
                         </div>
 
                         <div class="col-lg-6">
@@ -385,10 +393,9 @@
                         </div>
                     </div>
                 </form>
-                <form method="post" action="{{ url_for('rooms.reset_layout_config') }}" class="d-inline"
+                <form id="layoutResetForm" method="post" action="{{ url_for('rooms.reset_layout_config') }}"
                       onsubmit="return confirm('Restaurar as cores, elementos e posições do painel para o padrão original?');">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-outline-secondary mt-2">Restaurar padrão</button>
                 </form>
             </div>
         </div>
@@ -489,6 +496,91 @@
             </div>
         </div>
     </div>
+
+    <!-- ===== Andares ===== -->
+    <div class="tab-pane fade {{ 'show active' if active_tab == 'floors' }}" id="tab-floors">
+        <p class="text-muted small">
+            Organize as salas por unidade (prédio/site) e andar - cada andar tem sua
+            própria planta baixa. Clique numa unidade pra ver/gerenciar os andares dela.
+        </p>
+
+        <div class="accordion mb-3" id="unitsAccordion">
+            {% for unit in units %}
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#unitCollapse{{ unit.id }}">
+                        {{ unit.name }}
+                        <span class="badge bg-secondary ms-2">{{ unit.floors.count() }} andar{{ "es" if unit.floors.count() != 1 else "" }}</span>
+                    </button>
+                </h2>
+                <div id="unitCollapse{{ unit.id }}" class="accordion-collapse collapse" data-bs-parent="#unitsAccordion">
+                    <div class="accordion-body">
+                        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                            <form action="{{ url_for('rooms.rename_unit', unit_id=unit.id) }}" method="post" class="d-flex align-items-center gap-2">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <span class="text-muted small">Nome da unidade:</span>
+                                <input type="text" name="name" value="{{ unit.name }}" class="form-control form-control-sm" style="max-width: 200px;">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">Renomear</button>
+                            </form>
+                            <form action="{{ url_for('rooms.delete_unit', unit_id=unit.id) }}" method="post"
+                                  onsubmit="return confirm('Excluir a unidade {{ unit.name }}? Só funciona se ela não tiver andares.');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Excluir unidade</button>
+                            </form>
+                        </div>
+
+                        <ul class="list-group mb-3">
+                            {% for floor in unit.floors %}
+                            <li class="list-group-item">
+                                <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-2">
+                                    <form action="{{ url_for('rooms.rename_floor', floor_id=floor.id) }}" method="post" class="d-flex align-items-center gap-2">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="text" name="name" value="{{ floor.name }}" class="form-control form-control-sm" style="max-width: 200px;">
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary">Renomear</button>
+                                    </form>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <a href="{{ url_for('rooms.map_view', floor_id=floor.id) }}" class="btn btn-sm btn-outline-primary">Ver no mapa</a>
+                                        <form action="{{ url_for('rooms.delete_floor', floor_id=floor.id) }}" method="post"
+                                              onsubmit="return confirm('Excluir o andar {{ floor.name }}? Só funciona se ele não tiver salas.');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">Excluir andar</button>
+                                        </form>
+                                    </div>
+                                </div>
+                                <form action="{{ url_for('rooms.upload_map') }}" method="post" enctype="multipart/form-data" class="d-flex align-items-center gap-2 flex-wrap">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="floor_id" value="{{ floor.id }}">
+                                    <input type="file" name="map_file" accept=".pdf,.jpg,.jpeg,.png" class="form-control form-control-sm" style="max-width: 280px;" required>
+                                    <button type="submit" class="btn btn-sm btn-outline-primary">{{ "Atualizar planta" if floor.filename else "Enviar planta" }}</button>
+                                    <span class="text-muted small">
+                                        {{ "Planta atual: " + floor.original_filename if floor.filename else "Nenhuma planta enviada ainda." }}
+                                    </span>
+                                </form>
+                            </li>
+                            {% else %}
+                            <li class="list-group-item text-muted small">Nenhum andar nessa unidade ainda.</li>
+                            {% endfor %}
+                        </ul>
+
+                        <form action="{{ url_for('rooms.create_floor', unit_id=unit.id) }}" method="post" class="d-flex align-items-center gap-2">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="text" name="name" class="form-control form-control-sm" style="max-width: 200px;" placeholder="Nome do novo andar" required>
+                            <button type="submit" class="btn btn-sm btn-outline-primary">+ Andar nessa unidade</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <p class="text-muted small">Nenhuma unidade cadastrada ainda.</p>
+            {% endfor %}
+        </div>
+
+        <form action="{{ url_for('rooms.create_unit') }}" method="post" class="d-flex align-items-center gap-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="text" name="name" class="form-control form-control-sm" style="max-width: 200px;" placeholder="Nome da nova unidade" required>
+            <button type="submit" class="btn btn-sm btn-outline-primary">+ Unidade</button>
+        </form>
+    </div>
 </div>
 {% endblock %}
 
@@ -496,7 +588,15 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
 document.querySelectorAll(".qr-box[data-payload]").forEach(function (el) {
-    new QRCode(el, { text: el.dataset.payload, width: 160, height: 160 });
+    // correctLevel L (em vez do padrão H) e caixa maior: menos módulos no QR e
+    // cada um maior em pixels, bem mais fácil pra câmera do tablet focar e ler
+    // numa tela (com H ficava em ~3px por módulo - perto do limite de leitura).
+    new QRCode(el, {
+        text: el.dataset.payload,
+        width: 220,
+        height: 220,
+        correctLevel: QRCode.CorrectLevel.L,
+    });
 });
 
 document.getElementById("reportGroupFilterInput")?.addEventListener("input", function () {

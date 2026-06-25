@@ -9,11 +9,21 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 class="mb-0">Agendamento de salas</h4>
     <div class="d-flex align-items-center gap-2">
+        {% if units|length > 1 %}
+        <label for="unitFilter" class="form-label mb-0">Unidade:</label>
+        <select id="unitFilter" class="form-select form-select-sm" style="width: auto;">
+            <option value="">Todas as unidades</option>
+            {% for unit in units %}
+            <option value="{{ unit.id }}">{{ unit.name }}</option>
+            {% endfor %}
+        </select>
+        {% endif %}
         <label for="roomFilter" class="form-label mb-0">Sala:</label>
         <select id="roomFilter" class="form-select form-select-sm" style="width: auto;">
             <option value="">Todas as salas</option>
             {% for room in rooms %}
-            <option value="{{ room.id }}" {% if selected_room_id == room.id %}selected{% endif %}>{{ room.name }} ({{ room.capacity }} lugares)</option>
+            <option value="{{ room.id }}" data-unit-id="{{ room.floor.unit_id if room.floor else '' }}"
+                    {% if selected_room_id == room.id %}selected{% endif %}>{{ room.name }} ({{ room.capacity }} lugares)</option>
             {% endfor %}
         </select>
     </div>

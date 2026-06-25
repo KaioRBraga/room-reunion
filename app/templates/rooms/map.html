@@ -8,22 +8,45 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 class="mb-0">Mapa de salas</h4>
-    {% if current_user.is_admin %}
+    {% if current_user.is_admin and current_floor %}
     <div id="newRoomPin" class="palette-pin" draggable="true" title="Arraste para o mapa para cadastrar uma sala">+ Sala</div>
     {% endif %}
 </div>
 
-{% if current_user.is_admin %}
-<form id="mapUploadForm" action="{{ url_for('rooms.upload_map') }}" method="post" enctype="multipart/form-data" class="d-flex align-items-center gap-2 mb-3">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="file" name="map_file" accept=".pdf,.jpg,.jpeg,.png" class="form-control form-control-sm" style="max-width: 320px;" required>
-    <button type="submit" class="btn btn-sm btn-outline-primary">Enviar mapa (PDF/JPG/PNG)</button>
-</form>
-{% endif %}
+<div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+    {% if units %}
+    <div class="dropdown">
+        <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+            Filtrar{% if current_floor %}: {{ current_floor.unit.name }} - {{ current_floor.name }}{% endif %}
+        </button>
+        <ul class="dropdown-menu">
+            {% for unit in units %}
+            <li><h6 class="dropdown-header">{{ unit.name }}</h6></li>
+            {% for floor in unit.floors %}
+            <li>
+                <a class="dropdown-item {{ 'active' if current_floor and floor.id == current_floor.id }}"
+                   href="{{ url_for('rooms.map_view', floor_id=floor.id) }}">{{ floor.name }}</a>
+            </li>
+            {% else %}
+            <li><span class="dropdown-item-text text-muted small">Nenhum andar nessa unidade</span></li>
+            {% endfor %}
+            {% if not loop.last %}<li><hr class="dropdown-divider"></li>{% endif %}
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
 
 <div id="mapWrap" class="position-relative border rounded bg-white">
-    {% if floor_map %}
-    <img id="floorMapImg" src="{{ url_for('rooms.map_image') }}" class="w-100 d-block" draggable="false" alt="Planta baixa">
+    {% if not current_floor %}
+    <p class="text-muted text-center p-5 mb-0">
+        Nenhum andar cadastrado ainda.
+        {% if current_user.is_admin %}
+        Crie um em <a href="{{ url_for('rooms.settings_index', tab='floors') }}">Configurações &gt; Andares</a>.
+        {% endif %}
+    </p>
+    {% elif current_floor.filename %}
+    <img id="floorMapImg" src="{{ url_for('rooms.map_image', floor_id=current_floor.id) }}" class="w-100 d-block" draggable="false" alt="Planta baixa">
     {% for room in pinned_rooms %}
     <div class="room-pin {{ 'occupied' if room.is_occupied_now() else 'available' }}" data-room-id="{{ room.id }}" draggable="{{ 'true' if current_user.is_admin else 'false' }}"
          style="left: {{ room.pos_x * 100 }}%; top: {{ room.pos_y * 100 }}%;">
@@ -32,8 +55,12 @@
     {% endfor %}
     {% else %}
     <p class="text-muted text-center p-5 mb-0">
-        Nenhum mapa cadastrado ainda.
-        {% if not current_user.is_admin %}Peça a um administrador para enviar a planta baixa.{% endif %}
+        Nenhum mapa cadastrado ainda para "{{ current_floor.name }}".
+        {% if current_user.is_admin %}
+        Envie a planta em <a href="{{ url_for('rooms.settings_index', tab='floors') }}">Configurações &gt; Andares</a>.
+        {% else %}
+        Peça a um administrador para enviar a planta baixa.
+        {% endif %}
     </p>
     {% endif %}
 </div>
@@ -83,10 +110,6 @@
                     <div class="mb-3">
                         <label class="form-label">Outros equipamentos (separados por vírgula)</label>
                         <input type="text" id="roomPinEquipmentOther" class="form-control" placeholder="Ex: Apple TV, Lousa interativa">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Disponibilidade</label>
-                        <textarea id="roomPinAvailability" class="form-control" rows="2" placeholder="Ex: Disponível em horário comercial"></textarea>
                     </div>
                     <div class="row mb-3">
                         <div class="col">
@@ -199,6 +222,7 @@
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 <script>
     window.READYROOM_EQUIPMENT_OPTIONS = {{ equipment_options | tojson }};
+    window.READYROOM_CURRENT_FLOOR_ID = {{ current_floor.id if current_floor else "null" }};
 </script>
 <script src="{{ url_for('static', filename='js/room_map.js') }}"></script>
 {% endblock %}

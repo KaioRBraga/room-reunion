@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from app import create_app
+from app.auth.services import set_user_pin
 from app.bookings.services import (
     BookingConflictError,
     check_in_booking,
@@ -11,7 +12,7 @@ from app.bookings.services import (
     get_display_status,
 )
 from app.extensions import db
-from app.models import Room
+from app.models import Room, User
 from config import TestConfig
 
 
@@ -30,6 +31,15 @@ def room(app):
     db.session.add(room)
     db.session.commit()
     return room
+
+
+@pytest.fixture
+def user_with_pin(app):
+    set_user_pin("jsilva", "1234")
+    user = db.session.get(User, "jsilva")
+    user.display_name = "João Silva"
+    db.session.commit()
+    return user
 
 
 def _dt(offset_minutes):
@@ -111,21 +121,32 @@ def test_display_status_requires_valid_token(app, room):
     assert resp.get_json()["room"]["name"] == "Sala Painel"
 
 
-def test_start_now_endpoint_creates_30min_booking(app, room):
+def test_start_now_endpoint_creates_30min_booking(app, room, user_with_pin):
     client = app.test_client()
     resp = client.post(
         "/api/display/start-now",
         headers={"X-Display-Token": "tok-123"},
-        json={"title": "Reunião rápida"},
+        json={"username": "jsilva", "pin": "1234", "title": "Reunião rápida"},
     )
     assert resp.status_code == 201
     data = resp.get_json()
     assert data["status"] == "in_use" or data["status"] == "starting_soon"
     assert data["current_meeting"]["title"] == "Reunião rápida"
+    assert data["current_meeting"]["organizer"] == "João Silva"
 
     start = datetime.fromisoformat(data["current_meeting"]["start"])
     end = datetime.fromisoformat(data["current_meeting"]["end"])
     assert (end - start) == timedelta(minutes=30)
+
+
+def test_start_now_endpoint_requires_valid_pin(app, room, user_with_pin):
+    client = app.test_client()
+    resp = client.post(
+        "/api/display/start-now",
+        headers={"X-Display-Token": "tok-123"},
+        json={"username": "jsilva", "pin": "0000", "title": "Reunião rápida"},
+    )
+    assert resp.status_code == 401
 
 
 def test_check_in_end_extend_endpoints(app, room):

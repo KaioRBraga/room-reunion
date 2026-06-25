@@ -24,7 +24,9 @@ def _login_admin(client):
         sess["group_checked_at"] = 0
 
 
-def test_discard_room_unpins_and_deactivates(app):
+def test_discard_room_deactivates_and_keeps_position(app):
+    """`pos_x`/`pos_y` ficam preservados - é o que permite a sala reaparecer
+    no mesmo lugar do mapa ao ser restaurada da lixeira (`restore_room`)."""
     room = Room(name="Sala Pin", capacity=4, pos_x=0.2, pos_y=0.3)
     db.session.add(room)
     db.session.commit()
@@ -35,9 +37,25 @@ def test_discard_room_unpins_and_deactivates(app):
     assert resp.status_code == 200
 
     db.session.refresh(room)
-    assert room.pos_x is None
-    assert room.pos_y is None
+    assert room.pos_x == 0.2
+    assert room.pos_y == 0.3
     assert room.is_active is False
+
+
+def test_restore_room_reactivates_keeping_position(app):
+    room = Room(name="Sala Restaurada", capacity=4, pos_x=0.4, pos_y=0.6, is_active=False)
+    db.session.add(room)
+    db.session.commit()
+
+    client = app.test_client()
+    _login_admin(client)
+    resp = client.post("/rooms/%d/restore" % room.id)
+    assert resp.status_code == 302
+
+    db.session.refresh(room)
+    assert room.is_active is True
+    assert room.pos_x == 0.4
+    assert room.pos_y == 0.6
 
 
 def test_unpin_room_keeps_room_active(app):

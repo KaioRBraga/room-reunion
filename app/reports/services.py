@@ -1,3 +1,4 @@
+import statistics
 from collections import defaultdict
 
 from app.models import Booking, Room
@@ -12,6 +13,21 @@ def _business_hours_per_day(room):
     start_seconds = start.hour * 3600 + start.minute * 60 + start.second
     end_seconds = end.hour * 3600 + end.minute * 60 + end.second
     return max(end_seconds - start_seconds, 0) / 3600
+
+
+def _booking_brief(booking, rooms_by_id):
+    """Linha usada nas tabelas de detalhe (modal) ao clicar num card do dashboard."""
+    return {
+        "id": booking.id,
+        "title": booking.title,
+        "room_id": booking.room_id,
+        "room_name": rooms_by_id[booking.room_id].name,
+        "organizer_username": booking.organizer_username,
+        "organizer_display_name": booking.organizer_display_name or booking.organizer_username,
+        "start": booking.start_at.isoformat(),
+        "end": booking.end_at.isoformat(),
+        "duration_minutes": round((booking.end_at - booking.start_at).total_seconds() / 60, 1),
+    }
 
 
 def build_report(start_at, end_at, room_id=None):
@@ -90,7 +106,12 @@ def build_report(start_at, end_at, room_id=None):
         reverse=True,
     )
 
-    avg_duration = round(sum(durations_minutes) / len(durations_minutes), 1) if durations_minutes else None
+    # Mediana, não média aritmética: a média produz valores como "15.1min" que
+    # nenhuma reserva de fato tem (durações tendem a ser múltiplos de 5/15/30
+    # min), enquanto a mediana sempre reflete uma duração realmente registrada.
+    # Mantém precisão total (sem arredondar pra 1 decimal) pra exibição em
+    # min/seg ou h/min no front-end não perder segundos por arredondamento.
+    median_duration = statistics.median(durations_minutes) if durations_minutes else None
     no_show_rate = round(len(no_show) / len(bookings) * 100, 1) if bookings else None
 
     return {
@@ -100,7 +121,7 @@ def build_report(start_at, end_at, room_id=None):
             "cancelled_count": len(cancelled),
             "no_show_count": len(no_show),
             "no_show_rate": no_show_rate,
-            "avg_duration_minutes": avg_duration,
+            "median_duration_minutes": median_duration,
         },
         "by_room": by_room_list,
         "by_organizer": by_organizer_list,
@@ -108,6 +129,9 @@ def build_report(start_at, end_at, room_id=None):
         "quietest_room": min(by_room_list, key=lambda r: r["bookings_count"]) if by_room_list else None,
         "top_organizer": by_organizer_list[0] if by_organizer_list else None,
         "bottom_organizer": by_organizer_list[-1] if by_organizer_list else None,
+        "bookings": [_booking_brief(b, rooms_by_id) for b in active],
+        "cancelled_bookings": [_booking_brief(b, rooms_by_id) for b in cancelled],
+        "no_show_bookings": [_booking_brief(b, rooms_by_id) for b in no_show],
         "early_started_meetings": [
             {
                 "id": b.id,

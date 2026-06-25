@@ -80,9 +80,25 @@ def extend():
 @display_bp.route("/start-now", methods=["POST"])
 @device_required
 def start_now():
+    """Reserva imediata pelo tablet, autenticada pelo PIN do colaborador para
+    que o site mostre quem efetivamente iniciou a reunião (em vez de "painel").
+    """
     room = g.display_room
     data = request.get_json(silent=True) or {}
+
+    username = (data.get("username") or "").strip()
+    pin = (data.get("pin") or "").strip()
     title = (data.get("title") or "Reserva via painel").strip()
+
+    if not username or not pin:
+        return jsonify({"error": "Usuário e PIN são obrigatórios."}), 400
+
+    if not verify_user_pin(username, pin):
+        return jsonify({"error": "Usuário ou PIN inválido."}), 401
+
+    user = db.session.get(User, username)
+    display_name = (user.display_name if user else None) or username
+
     now = localnow()
     minutes = current_app.config["DISPLAY_START_NOW_MINUTES"]
 
@@ -90,8 +106,8 @@ def start_now():
         create_booking(
             room_id=room.id,
             title=title,
-            organizer_username="painel",
-            organizer_display_name=f"Painel - {room.name}",
+            organizer_username=username,
+            organizer_display_name=display_name,
             start_at=now,
             end_at=now + timedelta(minutes=minutes),
             skip_permission_check=True,

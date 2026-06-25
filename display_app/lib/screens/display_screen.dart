@@ -8,6 +8,7 @@ import '../services/device_config.dart';
 import '../theme/app_colors.dart';
 import '../widgets/display_body.dart';
 import '../widgets/pin_booking_sheet.dart';
+import '../widgets/start_now_pin_sheet.dart';
 
 class DisplayScreen extends StatefulWidget {
   final DeviceConfig config;
@@ -80,6 +81,23 @@ class _DisplayScreenState extends State<DisplayScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  void _onStartNow() {
+    showStartNowPinSheet(
+      context: context,
+      onSubmit: ({required String username, required String pin}) async {
+        final status = await _client.startNow(username: username, pin: pin);
+        if (!mounted) return;
+        setState(() {
+          _status = status;
+          _error = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reserva criada.')),
+        );
+      },
+    );
   }
 
   void _onSlotTap(DateTime start, DateTime end) {
@@ -160,7 +178,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
             () => _client.extend(minutes: 15),
             successMessage: 'Reunião estendida em 15 minutos.',
           ),
-          onStartNow: () => _runAction(_client.startNow, successMessage: 'Reserva criada.'),
+          onStartNow: _onStartNow,
           onSlotTap: _onSlotTap,
         ),
       ),

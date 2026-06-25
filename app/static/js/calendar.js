@@ -1,7 +1,23 @@
 document.addEventListener("DOMContentLoaded", function () {
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
     const rooms = window.READYROOM_ROOMS || [];
+    const unitFilter = document.getElementById("unitFilter");
     const roomFilter = document.getElementById("roomFilter");
+
+    // Esconde do filtro de sala as salas que não pertencem à unidade
+    // selecionada - mesmo padrão de unidade/andar já usado no mapa de salas.
+    function applyUnitFilter() {
+        if (!unitFilter) return;
+        const unitId = unitFilter.value;
+        let selectedHidden = false;
+        Array.from(roomFilter.options).forEach((option) => {
+            if (!option.value) return; // mantém sempre "Todas as salas"
+            const matches = !unitId || option.dataset.unitId === unitId;
+            option.hidden = !matches;
+            if (!matches && option.selected) selectedHidden = true;
+        });
+        if (selectedHidden) roomFilter.value = "";
+    }
 
     const modalEl = document.getElementById("bookingModal");
     const modal = new bootstrap.Modal(modalEl);
@@ -219,9 +235,20 @@ document.addEventListener("DOMContentLoaded", function () {
         headerToolbar: {
             left: "prev,next today",
             center: "title",
-            right: "dayGridMonth,timeGridWeek,timeGridDay",
+            right: "multiMonthYear,dayGridMonth,timeGridWeek,timeGridDay",
         },
         locale: "pt-br",
+        // O bundle do FullCalendar não traduz o texto dos botões a partir do
+        // `locale` (só formatação de data/título) - força aqui pra não
+        // ficar com "today/year/month/week/day" em inglês.
+        buttonText: {
+            today: "Hoje",
+            year: "Ano",
+            month: "Mês",
+            week: "Semana",
+            day: "Dia",
+            list: "Lista",
+        },
         height: "auto",
         slotMinTime: "07:00:00",
         slotMaxTime: "21:00:00",
@@ -234,6 +261,9 @@ document.addEventListener("DOMContentLoaded", function () {
             });
             if (roomFilter.value) {
                 params.set("room_id", roomFilter.value);
+            }
+            if (unitFilter && unitFilter.value) {
+                params.set("unit_id", unitFilter.value);
             }
             fetch("/bookings/api/events?" + params.toString())
                 .then((res) => res.json())
@@ -252,6 +282,14 @@ document.addEventListener("DOMContentLoaded", function () {
     roomFilter.addEventListener("change", function () {
         calendar.refetchEvents();
     });
+
+    if (unitFilter) {
+        applyUnitFilter();
+        unitFilter.addEventListener("change", function () {
+            applyUnitFilter();
+            calendar.refetchEvents();
+        });
+    }
 
     roomSelect.addEventListener("change", updateAttendeesHint);
 
