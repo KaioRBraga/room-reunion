@@ -1,7 +1,8 @@
 import os
 
-from flask import Flask, redirect, url_for
+from flask import Flask, flash, redirect, request, url_for
 from flask_login import current_user
+from flask_wtf.csrf import CSRFError
 
 from app.extensions import csrf, db, login_manager
 from config import Config
@@ -36,6 +37,30 @@ def create_app(config_class=Config):
         db.create_all()
         ensure_columns(db)
         ensure_default_floor(db)
+
+    def _is_ajax():
+        return bool(
+            (request.content_type and "application/json" in request.content_type)
+            or request.headers.get("X-CSRFToken")
+            or request.headers.get("X-CSRF-Token")
+        )
+
+    @app.errorhandler(CSRFError)
+    def handle_csrf_error(e):
+        if _is_ajax():
+            return jsonify({"error": "Sessão expirada. Recarregue a página e tente novamente."}), 400
+        flash("Sua sessão expirou ou o token de segurança é inválido. Tente novamente.", "warning")
+        referrer = request.referrer
+        if referrer and referrer.startswith(request.host_url):
+            return redirect(referrer)
+        return redirect(url_for("bookings.calendar_view"))
+
+    @app.errorhandler(500)
+    def handle_server_error(e):
+        db.session.rollback()
+        if _is_ajax():
+            return jsonify({"error": "Erro interno no servidor. Tente novamente."}), 500
+        return str(e), 500
 
     @app.route("/")
     def index():

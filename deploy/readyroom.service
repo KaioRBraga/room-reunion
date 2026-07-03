@@ -1,0 +1,30 @@
+[Unit]
+Description=ReadyRoom - Sistema de reserva de salas (Flask/Gunicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=readyroom
+Group=readyroom
+WorkingDirectory=/opt/readyroom
+ExecStart=/opt/readyroom/.venv/bin/gunicorn -c /opt/readyroom/deploy/gunicorn_conf.py run:app
+Restart=on-failure
+RestartSec=5
+
+# Isolamento de recursos - nao disputar com o servico que ja roda na maquina.
+# Calibrado para servidor com 4 nucleos / 7.3GiB RAM (~6.7GiB livres) - ver DEPLOY.md.
+CPUQuota=100%
+MemoryMax=768M
+TasksMax=100
+Nice=10
+IOWeight=50
+OOMScoreAdjust=200
+
+# Hardening basico - processo nao precisa de privilegios nem acesso a outras areas do disco.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,7 @@
 import os
 import re
 import secrets
+import socket
 import shutil
 import subprocess
 from datetime import datetime
@@ -407,6 +408,15 @@ _LAYOUT_COLOR_FIELDS = ("color_available", "color_starting_soon", "color_in_use"
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
+def _detect_lan_ip():
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except Exception:
+        return None
+
+
 @rooms_bp.route("/settings")
 @admin_required
 def settings_index():
@@ -416,6 +426,11 @@ def settings_index():
     looks_local = not public_base_url and (
         "127.0.0.1" in server_url or "localhost" in server_url
     )
+    if looks_local:
+        lan_ip = _detect_lan_ip()
+        if lan_ip:
+            server_url = server_url.replace("127.0.0.1", lan_ip).replace("localhost", lan_ip)
+            looks_local = False
 
     show_inactive = request.args.get("show_inactive") == "1"
     list_rooms = rooms if show_inactive else [r for r in rooms if r.is_active]

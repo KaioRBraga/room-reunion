@@ -13,6 +13,9 @@ class Config:
         "DATABASE_URL"
     ) or "sqlite:///" + os.path.join(BASE_DIR, "instance", "readyroom.sqlite3")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "connect_args": {"timeout": 20},
+    }
 
     DOMINIO_AD = os.environ.get("DOMINIO_AD", "MOTIVA")
     SERVIDOR_AD = os.environ.get("SERVIDOR_AD", "10.100.0.10")

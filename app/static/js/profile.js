@@ -52,7 +52,10 @@ document.addEventListener("DOMContentLoaded", function () {
             headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
             body: JSON.stringify({ password: password }),
         })
-            .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+            .then((res) => res.json().then(
+                (data) => ({ ok: res.ok, data }),
+                () => ({ ok: false, data: {} })
+            ))
             .then(({ ok, data }) => {
                 if (!ok || !data.ok) {
                     errorBox.textContent = (data && data.error) || "Não foi possível confirmar a senha.";
@@ -67,7 +70,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 pinFormWrap.scrollIntoView({ behavior: "smooth", block: "center" });
             })
             .catch(function () {
-                errorBox.textContent = "Erro de comunicação com o servidor.";
+                errorBox.textContent = "Sem resposta do servidor. Verifique a conexão e tente novamente.";
                 errorBox.classList.remove("d-none");
             });
     }

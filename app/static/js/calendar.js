@@ -314,16 +314,19 @@ document.addEventListener("DOMContentLoaded", function () {
             },
             body: JSON.stringify(payload),
         })
-            .then((res) => res.json().then((data) => ({ status: res.status, data })))
+            .then((res) => res.json().then(
+                (data) => ({ status: res.status, data }),
+                () => ({ status: res.status, data: {} })
+            ))
             .then(({ status, data }) => {
                 if (status >= 400) {
-                    showError(data.error || "Não foi possível salvar a reserva.");
+                    showError(data.error || "Erro no servidor. Recarregue a página e tente novamente.");
                     return;
                 }
                 modal.hide();
                 calendar.refetchEvents();
             })
-            .catch(() => showError("Erro de comunicação com o servidor."));
+            .catch(() => showError("Sem resposta do servidor. Verifique a conexão e tente novamente."));
     });
 
     cancelBtn.addEventListener("click", function () {

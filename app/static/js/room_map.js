@@ -248,10 +248,13 @@ document.addEventListener("DOMContentLoaded", function () {
             headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
             body: JSON.stringify(payload),
         })
-            .then((res) => res.json().then((data) => ({ status: res.status, data })))
+            .then((res) => res.json().then(
+                (data) => ({ status: res.status, data }),
+                () => ({ status: res.status, data: {} })
+            ))
             .then(({ status, data }) => {
                 if (status >= 400) {
-                    showError(data.error || "Não foi possível salvar.");
+                    showError(data.error || "Erro no servidor. Recarregue a página e tente novamente.");
                     return;
                 }
                 if (!currentRoomId) {
@@ -262,7 +265,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
                 modal.hide();
             })
-            .catch(() => showError("Erro de comunicação com o servidor."));
+            .catch(() => showError("Sem resposta do servidor. Verifique a conexão e tente novamente."));
     });
 
     function unpinRoom(roomId) {
@@ -602,10 +605,13 @@ document.addEventListener("DOMContentLoaded", function () {
             headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
             body: JSON.stringify(payload),
         })
-            .then((res) => res.json().then((data) => ({ status: res.status, data })))
+            .then((res) => res.json().then(
+                (data) => ({ status: res.status, data }),
+                () => ({ status: res.status, data: {} })
+            ))
             .then(({ status, data }) => {
                 if (status >= 400) {
-                    reserveError.textContent = data.error || "Não foi possível reservar.";
+                    reserveError.textContent = data.error || "Erro no servidor. Recarregue a página e tente novamente.";
                     reserveError.classList.remove("d-none");
                     return;
                 }
@@ -621,7 +627,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 showSuccess("Reserva criada com sucesso!");
             })
             .catch(() => {
-                reserveError.textContent = "Erro de comunicação com o servidor.";
+                reserveError.textContent = "Sem resposta do servidor. Verifique a conexão e tente novamente.";
                 reserveError.classList.remove("d-none");
             });
     });
