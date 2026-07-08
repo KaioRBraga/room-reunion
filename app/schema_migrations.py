@@ -38,6 +38,7 @@ _NEW_COLUMNS = [
     ("display_layout_settings", "agenda_position", "VARCHAR(20) DEFAULT 'below_status'"),
     ("display_layout_settings", "button_position", "VARCHAR(20) DEFAULT 'status_banner'"),
     ("display_layout_settings", "logo_filename", "VARCHAR(255)"),
+    ("display_layout_settings", "screen_schedule", "TEXT"),
 ]
 
 

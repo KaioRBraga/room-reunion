@@ -10,7 +10,168 @@
 </p>
 
 {% if ad_groups_error %}
-<div class="alert alert-warning col-md-6">{{ ad_groups_error }}</div>
+{# Conta de serviço não configurada — pede a senha do próprio admin para buscar os grupos #}
+<div class="col-md-6 mb-3">
+    <div id="adAuthBox" class="border rounded p-3 mb-3">
+        <p class="small mb-2">
+            <strong>Autentique com sua senha do AD para carregar a lista de grupos:</strong>
+        </p>
+        <div class="input-group input-group-sm mb-2">
+            <span class="input-group-text">{{ current_user.username }}</span>
+            <input type="password" id="adPasswordInput" class="form-control"
+                   placeholder="Senha do AD" autocomplete="current-password">
+            <button class="btn btn-outline-primary" type="button" id="loadGroupsBtn">Carregar grupos</button>
+        </div>
+        <div id="adAuthError" class="text-danger small d-none"></div>
+    </div>
+
+    {# Área de checkboxes preenchida via AJAX após autenticação #}
+    <div id="adGroupsArea" class="d-none">
+        <form method="post" action="{{ url_for('rooms.update_booking_groups', room_id=room.id) }}" id="adGroupForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="text" id="groupFilterInput" class="form-control form-control-sm mb-2"
+                   placeholder="Filtrar grupos por nome...">
+            <div id="groupCheckboxList" class="mb-2" style="max-height: 360px; overflow-y: auto;"></div>
+            <button type="submit" class="btn btn-primary btn-sm">Salvar grupos</button>
+        </form>
+    </div>
+
+    {# Fallback manual caso a autenticação também falhe #}
+    <details class="mt-3">
+        <summary class="small text-muted" style="cursor:pointer;">Adicionar grupos manualmente</summary>
+        <form method="post" action="{{ url_for('rooms.update_booking_groups', room_id=room.id) }}"
+              class="mt-2" id="manualGroupForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if allowed_group_cns %}
+            <p class="small text-muted mb-1">Grupos configurados (desmarque para remover):</p>
+            <div class="mb-2">
+                {% for cn in allowed_group_cns | sort %}
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="group_cns" value="{{ cn }}"
+                           id="manual-group-{{ loop.index }}" checked>
+                    <label class="form-check-label font-monospace small" for="manual-group-{{ loop.index }}">{{ cn }}</label>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted small">Nenhum grupo configurado para esta sala.</p>
+            {% endif %}
+            <label class="form-label small">Adicionar grupos (um CN por linha):</label>
+            <textarea id="manualGroupInput" class="form-control form-control-sm font-monospace mb-2"
+                      rows="3" placeholder="g_nome_do_grupo&#10;INT-outro_grupo"></textarea>
+            <button type="submit" class="btn btn-secondary btn-sm">Salvar grupos</button>
+        </form>
+    </details>
+</div>
+
+<script>
+(function () {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+    const allowedCns = new Set({{ allowed_group_cns | list | tojson }});
+
+    document.getElementById("loadGroupsBtn").addEventListener("click", function () {
+        const password = document.getElementById("adPasswordInput").value;
+        const errorBox = document.getElementById("adAuthError");
+        const btn = this;
+
+        if (!password) {
+            errorBox.textContent = "Informe sua senha do AD.";
+            errorBox.classList.remove("d-none");
+            return;
+        }
+        errorBox.classList.add("d-none");
+        btn.disabled = true;
+        btn.textContent = "Carregando...";
+
+        fetch("{{ url_for('rooms.api_ad_groups') }}", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+            body: JSON.stringify({ password: password }),
+        })
+            .then((res) => res.json().then(
+                (data) => ({ ok: res.ok, data }),
+                () => ({ ok: false, data: {} })
+            ))
+            .then(({ ok, data }) => {
+                btn.disabled = false;
+                btn.textContent = "Carregar grupos";
+                if (!ok) {
+                    errorBox.textContent = data.error || "Erro ao buscar grupos.";
+                    errorBox.classList.remove("d-none");
+                    return;
+                }
+                // Limpa a senha da memória e esconde o box de autenticação
+                document.getElementById("adPasswordInput").value = "";
+                document.getElementById("adAuthBox").classList.add("d-none");
+
+                // Renderiza os checkboxes
+                const list = document.getElementById("groupCheckboxList");
+                list.innerHTML = "";
+                const filter = document.getElementById("groupFilterInput");
+                filter.placeholder = "Filtrar " + data.length + " grupos por nome...";
+                data.forEach(function (group, i) {
+                    const div = document.createElement("div");
+                    div.className = "form-check group-checkbox-item";
+                    const input = document.createElement("input");
+                    input.className = "form-check-input";
+                    input.type = "checkbox";
+                    input.name = "group_cns";
+                    input.value = group.cn;
+                    input.id = "adgroup-" + i;
+                    if (allowedCns.has(group.cn)) input.checked = true;
+                    const label = document.createElement("label");
+                    label.className = "form-check-label";
+                    label.htmlFor = "adgroup-" + i;
+                    label.textContent = group.cn;
+                    if (group.description) {
+                        const desc = document.createElement("span");
+                        desc.className = "text-muted small";
+                        desc.textContent = " - " + group.description;
+                        label.appendChild(desc);
+                    }
+                    div.appendChild(input);
+                    div.appendChild(label);
+                    list.appendChild(div);
+                });
+                document.getElementById("adGroupsArea").classList.remove("d-none");
+            })
+            .catch(function () {
+                btn.disabled = false;
+                btn.textContent = "Carregar grupos";
+                errorBox.textContent = "Sem resposta do servidor. Verifique a conexão.";
+                errorBox.classList.remove("d-none");
+            });
+    });
+
+    document.getElementById("adPasswordInput").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            document.getElementById("loadGroupsBtn").click();
+        }
+    });
+
+    document.getElementById("groupFilterInput").addEventListener("input", function () {
+        const q = this.value.trim().toLowerCase();
+        document.querySelectorAll("#groupCheckboxList .group-checkbox-item").forEach(function (item) {
+            item.classList.toggle("d-none", !item.textContent.toLowerCase().includes(q));
+        });
+    });
+
+    document.getElementById("manualGroupForm").addEventListener("submit", function () {
+        const textarea = document.getElementById("manualGroupInput");
+        textarea.value.split("\n").forEach(function (line) {
+            const cn = line.trim();
+            if (!cn) return;
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "group_cns";
+            input.value = cn;
+            document.getElementById("manualGroupForm").appendChild(input);
+        });
+    });
+}());
+</script>
+
 {% elif not ad_groups %}
 <p class="text-muted col-md-6">
     Nenhum grupo encontrado no AD{{ " com os prefixos %s" % (ad_group_prefixes | join(", ")) if ad_group_prefixes else "" }}.

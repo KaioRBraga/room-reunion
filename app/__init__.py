@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask, flash, redirect, request, url_for
+from flask import Flask, flash, jsonify, redirect, request, url_for
 from flask_login import current_user
 from flask_wtf.csrf import CSRFError
 
@@ -50,6 +50,18 @@ def create_app(config_class=Config):
         if _is_ajax():
             return jsonify({"error": "Sessão expirada. Recarregue a página e tente novamente."}), 400
         flash("Sua sessão expirou ou o token de segurança é inválido. Tente novamente.", "warning")
+        referrer = request.referrer
+        if referrer and referrer.startswith(request.host_url):
+            return redirect(referrer)
+        return redirect(url_for("bookings.calendar_view"))
+
+    @app.errorhandler(413)
+    def handle_too_large(e):
+        limit_mb = app.config.get("MAX_CONTENT_LENGTH", 0) // (1024 * 1024)
+        msg = f"Arquivo muito grande. Limite: {limit_mb} MB."
+        if _is_ajax():
+            return jsonify({"error": msg}), 413
+        flash(msg, "danger")
         referrer = request.referrer
         if referrer and referrer.startswith(request.host_url):
             return redirect(referrer)

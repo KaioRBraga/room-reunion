@@ -1,3 +1,5 @@
+import base64
+import io
 import os
 import re
 import secrets
@@ -22,7 +24,7 @@ from flask_login import current_user, login_required
 
 from app.auth.decorators import admin_required
 from app.extensions import db
-from app.ldap_client import LdapAuthError, list_groups
+from app.ldap_client import LdapAuthError, bind_user, list_groups, list_groups_with_conn
 from app.models import (
     DisplayLayoutSettings,
     Floor,
@@ -421,7 +423,7 @@ def _detect_lan_ip():
 @admin_required
 def settings_index():
     rooms = Room.query.order_by(Room.name).all()
-    public_base_url = current_app.config["PUBLIC_BASE_URL"]
+    public_base_url = current_app.config.get("PUBLIC_BASE_URL", "")
     server_url = public_base_url or request.url_root.rstrip("/")
     looks_local = not public_base_url and (
         "127.0.0.1" in server_url or "localhost" in server_url
@@ -452,6 +454,21 @@ def settings_index():
     else:
         tablet_logo_url = url_for("static", filename="img/logo-motivabpo.png")
 
+    apk_path = _tablet_apk_path()
+    apk_info = None
+    apk_qr_b64 = None
+    if apk_path is not None:
+        stat = apk_path.stat()
+        apk_info = {
+            "size_mb": round(stat.st_size / (1024 * 1024), 1),
+            "mtime": datetime.fromtimestamp(stat.st_mtime).strftime("%d/%m/%Y %H:%M"),
+        }
+        apk_download_url = server_url + url_for("rooms.download_tablet_apk")
+        try:
+            apk_qr_b64 = _apk_qr_b64(apk_download_url)
+        except Exception:
+            apk_qr_b64 = None
+
     return render_template(
         "rooms/settings.html",
         active_tab=active_tab,
@@ -468,6 +485,8 @@ def settings_index():
         ad_group_prefixes=current_app.config["AD_GROUP_PREFIXES"],
         allowed_report_group_cns=set(ReportViewerGroup.allowed_cns()),
         units=Unit.query.order_by(Unit.name).all(),
+        apk_info=apk_info,
+        apk_qr_b64=apk_qr_b64,
     )
 
 
@@ -505,6 +524,17 @@ def update_layout_config():
     settings.show_tags = "show_tags" in request.form
     settings.show_video_icon = "show_video_icon" in request.form
     settings.show_schedule_hint = "show_schedule_hint" in request.form
+
+    schedule = []
+    for day in range(7):
+        active = f"day_{day}_active" in request.form
+        raw_off = request.form.get(f"day_{day}_off", "22")
+        raw_on = request.form.get(f"day_{day}_on", "6")
+        off_h = int(raw_off) if raw_off.isdigit() and 0 <= int(raw_off) <= 23 else 22
+        on_h = int(raw_on) if raw_on.isdigit() and 0 <= int(raw_on) <= 23 else 6
+        schedule.append({"day": day, "active": active, "off": off_h, "on": on_h})
+    settings.screen_schedule = __import__("json").dumps(schedule)
+
     settings.updated_by = current_user.username
     db.session.commit()
     flash("Layout do painel atualizado.", "success")
@@ -524,11 +554,9 @@ def reset_layout_config():
 
 
 def _resolve_adb_path():
-    """Localiza o `adb`: primeiro no PATH, depois no Android SDK apontado por
-    `ANDROID_HOME`/`ANDROID_SDK_ROOT`. O Flutter/Android Studio normalmente
-    enxergam o SDK por essas variáveis sem nunca adicionar `platform-tools`
-    ao PATH do sistema - confiar só em `shutil.which("adb")` falha mesmo
-    numa máquina onde `adb` funciona perfeitamente pelo terminal do Flutter.
+    """Localiza o `adb`: PATH → variáveis de ambiente → caminhos padrão do
+    Android Studio no Windows/Linux. O Flutter/Android Studio normalmente não
+    adicionam `platform-tools` ao PATH do sistema.
     """
     found = shutil.which("adb")
     if found:
@@ -538,6 +566,21 @@ def _resolve_adb_path():
         if not sdk_root:
             continue
         found = shutil.which("adb", path=str(Path(sdk_root) / "platform-tools"))
+        if found:
+            return found
+    # Caminhos padrão do Android Studio no Windows (LOCALAPPDATA) e Linux (~)
+    candidate_roots = []
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        candidate_roots.append(Path(local_app_data) / "Android" / "Sdk")
+    home = Path.home()
+    candidate_roots += [
+        home / "AppData" / "Local" / "Android" / "Sdk",
+        home / "Android" / "Sdk",
+        Path("/opt/android-sdk"),
+    ]
+    for sdk_root in candidate_roots:
+        found = shutil.which("adb", path=str(sdk_root / "platform-tools"))
         if found:
             return found
     return None
@@ -574,18 +617,63 @@ def _request_server_port():
     return "5000"
 
 
-def _tablet_apk_path():
-    """Caminho do último APK gerado por `flutter build apk` em `display_app/`.
+def _stored_apk_path():
+    """APK enviado pelo painel de administração (armazenado em instance/)."""
+    return Path(current_app.instance_path) / "tablet-app.apk"
 
-    Prioriza o build de release; cai pro de debug se for o único disponível
-    (útil ao testar antes de publicar uma versão de release).
-    """
+
+def _tablet_apk_path():
+    """Retorna o APK disponível: upload pelo painel primeiro, build local como fallback."""
+    stored = _stored_apk_path()
+    if stored.is_file():
+        return stored
     build_dir = Path(current_app.root_path).parent / "display_app" / "build" / "app" / "outputs" / "flutter-apk"
     for name in ("app-release.apk", "app-debug.apk"):
         candidate = build_dir / name
         if candidate.is_file():
             return candidate
     return None
+
+
+def _apk_qr_b64(download_url):
+    """QR code PNG do URL de download, retornado como base64 para embed no HTML."""
+    import qrcode
+    img = qrcode.make(download_url)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+@rooms_bp.route("/layout/upload-apk", methods=["POST"])
+@admin_required
+def upload_tablet_apk():
+    """Recebe o APK enviado pelo administrador e armazena em instance/."""
+    file = request.files.get("apk_file")
+    if not file or not file.filename:
+        return jsonify({"ok": False, "error": "Nenhum arquivo enviado."}), 400
+    if not file.filename.lower().endswith(".apk"):
+        return jsonify({"ok": False, "error": "Somente arquivos .apk são aceitos."}), 400
+    dest = _stored_apk_path()
+    file.save(str(dest))
+    size_kb = dest.stat().st_size // 1024
+    return jsonify({"ok": True, "size_kb": size_kb})
+
+
+@rooms_bp.route("/layout/download-apk")
+@admin_required
+def download_tablet_apk():
+    """Serve o APK para download — funciona sem adb, de qualquer máquina."""
+    from flask import send_file
+    apk_path = _tablet_apk_path()
+    if apk_path is None:
+        flash("Nenhum APK disponível. Faça o upload pelo painel.", "warning")
+        return redirect(url_for("rooms.settings_index", tab="layout"))
+    return send_file(
+        apk_path,
+        as_attachment=True,
+        download_name="readyroom-tablet.apk",
+        mimetype="application/vnd.android.package-archive",
+    )
 
 
 @rooms_bp.route("/layout/install-apk", methods=["POST"])
@@ -836,6 +924,26 @@ def edit_room(room_id):
         return redirect(url_for("rooms.settings_index", tab="rooms"))
 
     return render_template("rooms/form.html", form=form, room=room)
+
+
+@rooms_bp.route("/api/ad-groups", methods=["POST"])
+@admin_required
+def api_ad_groups():
+    data = request.get_json(silent=True) or {}
+    password = data.get("password", "")
+    if not password:
+        return jsonify({"error": "Senha obrigatória."}), 400
+    try:
+        conn = bind_user(current_user.username, password)
+    except LdapAuthError:
+        return jsonify({"error": "Senha incorreta ou falha de autenticação no AD."}), 401
+    try:
+        groups = list_groups_with_conn(conn, prefixes=current_app.config["AD_GROUP_PREFIXES"])
+    except Exception as exc:
+        return jsonify({"error": f"Erro ao listar grupos: {exc}"}), 500
+    finally:
+        conn.unbind()
+    return jsonify(groups)
 
 
 # --- Permissão de agendamento por grupo AD (aba "Permissões", admin-only) ---

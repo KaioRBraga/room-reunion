@@ -44,7 +44,7 @@ class Config:
         p.strip() for p in os.environ.get("AD_GROUP_PREFIXES", "g_,INT-").split(",") if p.strip()
     ]
 
-    MAX_CONTENT_LENGTH = int(os.environ.get("MAX_UPLOAD_MB", "15")) * 1024 * 1024
+    MAX_CONTENT_LENGTH = int(os.environ.get("MAX_UPLOAD_MB", "150")) * 1024 * 1024
 
     # URL fixa do servidor (ex: http://10.100.0.20:5000) usada para montar o QR
     # code de pareamento na aba Dispositivos. Se vazio, cai para a URL que o

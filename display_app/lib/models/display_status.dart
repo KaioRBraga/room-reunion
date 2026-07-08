@@ -90,6 +90,34 @@ DisplayStatusKind parseDisplayStatus(String value) {
   }
 }
 
+/// Horário de tela para um dia da semana (0=Seg … 6=Dom).
+/// active=false → tela apagada o dia inteiro.
+class DaySchedule {
+  final int day;
+  final bool active;
+  final int offHour;
+  final int onHour;
+
+  const DaySchedule({
+    required this.day,
+    required this.active,
+    required this.offHour,
+    required this.onHour,
+  });
+
+  factory DaySchedule.fromJson(Map<String, dynamic> json) => DaySchedule(
+        day: json['day'] as int,
+        active: json['active'] as bool? ?? true,
+        offHour: json['off'] as int? ?? 22,
+        onHour: json['on'] as int? ?? 6,
+      );
+
+  static List<DaySchedule> defaultSchedule() => List.generate(
+        7,
+        (i) => DaySchedule(day: i, active: true, offHour: 22, onHour: 6),
+      );
+}
+
 /// Aparência do painel configurada pelo admin no site (aba "Layout do
 /// painel"). Vem junto do status pra não precisar de uma chamada extra -
 /// os defaults espelham `AppColors` e cobrem o caso de um servidor antigo
@@ -121,6 +149,7 @@ class DisplayLayoutSettings {
   final AgendaPosition agendaPosition;
   final ButtonPosition buttonPosition;
   final String? logoUrl;
+  final List<DaySchedule> screenSchedule;
 
   const DisplayLayoutSettings({
     required this.showLogo,
@@ -133,6 +162,7 @@ class DisplayLayoutSettings {
     this.agendaPosition = AgendaPosition.belowStatus,
     this.buttonPosition = ButtonPosition.statusBanner,
     this.logoUrl,
+    this.screenSchedule = const [],
   });
 
   static const defaults = DisplayLayoutSettings(
@@ -159,6 +189,10 @@ class DisplayLayoutSettings {
       agendaPosition: _parseAgendaPosition(json['agenda_position'] as String?),
       buttonPosition: _parseButtonPosition(json['button_position'] as String?),
       logoUrl: json['logo_url'] as String?,
+      screenSchedule: (json['screen_schedule'] as List<dynamic>?)
+              ?.map((e) => DaySchedule.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          DaySchedule.defaultSchedule(),
     );
   }
 

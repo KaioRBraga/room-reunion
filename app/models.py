@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 
 from app.extensions import db
@@ -153,6 +154,12 @@ class DisplayLayoutSettings(db.Model):
     # Logo específica do painel/tablet (diferente da logo do site em
     # SiteBrandingSettings) - None usa o asset padrão empacotado no app Flutter.
     logo_filename = db.Column(db.String(255), nullable=True)
+    # Agenda de tela por dia da semana (JSON). Cada entrada:
+    #   {"day": 0-6, "active": bool, "off": 0-23, "on": 0-23}
+    # 0=Segunda … 6=Domingo (convenção Python weekday()).
+    # active=False → tela apagada o dia inteiro.
+    # NULL → usa _DEFAULT_SCREEN_SCHEDULE.
+    screen_schedule = db.Column(db.Text, nullable=True)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
     updated_by = db.Column(db.String(120), nullable=True)
 
@@ -176,6 +183,27 @@ class DisplayLayoutSettings(db.Model):
         self.agenda_position = self.DEFAULT_AGENDA_POSITION
         self.button_position = self.DEFAULT_BUTTON_POSITION
         self.logo_filename = None
+        self.screen_schedule = None
+
+    _DEFAULT_SCREEN_SCHEDULE = [
+        {"day": i, "active": True, "off": 22, "on": 6} for i in range(7)
+    ]
+
+    @property
+    def screen_schedule_data(self):
+        """Lista com entrada por dia (0=Seg … 6=Dom)."""
+        if not self.screen_schedule:
+            return list(self._DEFAULT_SCREEN_SCHEDULE)
+        try:
+            data = json.loads(self.screen_schedule)
+            # Garante que todos os 7 dias estão presentes
+            by_day = {e["day"]: e for e in data}
+            return [
+                by_day.get(d, {"day": d, "active": True, "off": 22, "on": 6})
+                for d in range(7)
+            ]
+        except Exception:
+            return list(self._DEFAULT_SCREEN_SCHEDULE)
 
     def to_payload(self):
         return {
@@ -190,6 +218,7 @@ class DisplayLayoutSettings(db.Model):
                 "starting_soon": self.color_starting_soon,
                 "in_use": self.color_in_use,
             },
+            "screen_schedule": self.screen_schedule_data,
         }
 
     def __repr__(self):

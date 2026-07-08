@@ -148,37 +148,42 @@ def _build_service_connection():
         raise LdapAuthError("Não foi possível conectar ao AD com a conta de serviço.") from exc
 
 
-def list_groups(prefixes=None):
-    """Lista grupos do AD (cn + description), opcionalmente filtrando por um ou mais prefixos do cn.
+def _search_groups_on_conn(conn, prefixes):
+    """Executa a busca de grupos numa conexão já aberta. Não faz unbind."""
+    prefixes = [p for p in (prefixes or []) if p]
+    if prefixes:
+        prefix_filters = "".join(f"(cn={escape_filter_chars(p)}*)" for p in prefixes)
+        search_filter = f"(&(objectClass=group)(|{prefix_filters}))"
+    else:
+        search_filter = "(objectClass=group)"
+    conn.search(
+        search_base=Config.BASE_DN,
+        search_filter=search_filter,
+        attributes=["cn", "description"],
+        search_scope=SUBTREE,
+    )
+    groups = []
+    for entry in conn.entries:
+        if "cn" not in entry or not entry.cn.value:
+            continue
+        description = entry.description.value if "description" in entry and entry.description else None
+        groups.append({"cn": entry.cn.value, "description": description})
+    groups.sort(key=lambda g: g["cn"].lower())
+    return groups
 
-    O AD costuma ter centenas de grupos nativos do Windows misturados aos
-    grupos da organização - sem filtro de prefixo, a lista fica grande demais
-    para ser útil numa tela de permissão de salas.
-    """
+
+def list_groups(prefixes=None):
+    """Lista grupos do AD usando a conta de serviço configurada no .env."""
     conn = _build_service_connection()
     try:
-        prefixes = [p for p in (prefixes or []) if p]
-        if prefixes:
-            prefix_filters = "".join(f"(cn={escape_filter_chars(p)}*)" for p in prefixes)
-            search_filter = f"(&(objectClass=group)(|{prefix_filters}))"
-        else:
-            search_filter = "(objectClass=group)"
-        conn.search(
-            search_base=Config.BASE_DN,
-            search_filter=search_filter,
-            attributes=["cn", "description"],
-            search_scope=SUBTREE,
-        )
-        groups = []
-        for entry in conn.entries:
-            if "cn" not in entry or not entry.cn.value:
-                continue
-            description = entry.description.value if "description" in entry and entry.description else None
-            groups.append({"cn": entry.cn.value, "description": description})
-        groups.sort(key=lambda g: g["cn"].lower())
-        return groups
+        return _search_groups_on_conn(conn, prefixes)
     finally:
         conn.unbind()
+
+
+def list_groups_with_conn(conn, prefixes=None):
+    """Lista grupos usando uma conexão já autenticada (o caller gerencia o unbind)."""
+    return _search_groups_on_conn(conn, prefixes)
 
 
 def search_people(query, limit=10):

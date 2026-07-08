@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:screen_brightness/screen_brightness.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../models/display_status.dart';
 import '../services/api_client.dart';
@@ -28,22 +30,58 @@ class _DisplayScreenState extends State<DisplayScreen> {
   Timer? _pollTimer;
   Timer? _tickTimer;
 
+  bool _screenDimmed = false;
+
+  // Agenda por dia recebida do servidor; default até o primeiro poll chegar.
+  List<DaySchedule> _screenSchedule = DaySchedule.defaultSchedule();
+
+  bool _isNightHour() {
+    final now = DateTime.now();
+    // weekday ISO (1=Seg…7=Dom) → convenção servidor (0=Seg…6=Dom)
+    final weekday = now.weekday - 1;
+    try {
+      final day = _screenSchedule.firstWhere((s) => s.day == weekday);
+      if (!day.active) return true;
+      final h = now.hour;
+      return h >= day.offHour || h < day.onHour;
+    } catch (_) {
+      return false;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    WakelockPlus.enable();
     _client = ApiClient(baseUrl: widget.config.serverUrl, token: widget.config.token);
     _refresh();
     _pollTimer = Timer.periodic(const Duration(seconds: 15), (_) => _refresh());
     _tickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        _applyScreenSchedule();
+      }
     });
+    _applyScreenSchedule();
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
     _tickTimer?.cancel();
+    ScreenBrightness().resetScreenBrightness();
     super.dispose();
+  }
+
+  Future<void> _applyScreenSchedule() async {
+    final night = _isNightHour();
+    if (night == _screenDimmed) return;
+    setState(() => _screenDimmed = night);
+    if (night) {
+      await ScreenBrightness().setScreenBrightness(0.0);
+    } else {
+      await ScreenBrightness().resetScreenBrightness();
+    }
   }
 
   Future<void> _refresh() async {
@@ -53,6 +91,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
       setState(() {
         _status = status;
         _error = null;
+        _screenSchedule = status.layout.screenSchedule;
       });
     } catch (e) {
       if (!mounted) return;
@@ -135,6 +174,13 @@ class _DisplayScreenState extends State<DisplayScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_screenDimmed) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: _NightOverlay(),
+      );
+    }
+
     final status = _status;
     if (status == null) {
       return Scaffold(
@@ -181,6 +227,22 @@ class _DisplayScreenState extends State<DisplayScreen> {
           onStartNow: _onStartNow,
           onSlotTap: _onSlotTap,
         ),
+      ),
+    );
+  }
+}
+
+// Overlay preto que absorve todos os toques durante o horário noturno.
+class _NightOverlay extends StatelessWidget {
+  const _NightOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {},
+      onLongPress: () {},
+      child: const SizedBox.expand(
+        child: ColoredBox(color: Colors.black),
       ),
     );
   }

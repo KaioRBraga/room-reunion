@@ -1,5 +1,56 @@
 {% extends "base.html" %}
 {% block title %}Configurações - ReadyRoom{% endblock %}
+{% block extra_css %}
+<style>
+#permGate {
+    display: flex;
+    justify-content: center;
+    padding: 2rem 1rem;
+}
+.perm-gate-card {
+    width: 100%;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 2.5rem 2rem 2rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.75rem;
+    background: var(--bs-body-bg, #1a1a2e);
+}
+.perm-gate-lock {
+    width: 68px;
+    height: 68px;
+    border-radius: 50%;
+    background: rgba(108,117,125,.14);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--bs-secondary, #6c757d);
+    margin-bottom: 1.25rem;
+}
+.perm-gate-card h5 {
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+}
+.perm-gate-card .perm-gate-sub {
+    color: var(--bs-secondary-color, #6c757d);
+    font-size: .875rem;
+    margin-bottom: 1.75rem;
+    line-height: 1.5;
+}
+.perm-gate-card .input-group {
+    margin-bottom: 0.5rem;
+}
+.perm-gate-card .btn-primary {
+    margin-top: 0.75rem;
+    width: 100%;
+    padding: .5rem;
+    font-weight: 500;
+}
+</style>
+{% endblock %}
 {% block content %}
 <h4 class="mb-3">Configurações</h4>
 
@@ -247,21 +298,71 @@
 
                 <div class="card mb-3" id="apkInstallCard">
                     <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                            <div>
-                                <h6 class="card-title mb-1">Instalar app no tablet</h6>
-                                <p class="text-muted small mb-0">
-                                    Conecte o tablet/celular via USB nesta máquina (com a depuração USB
-                                    habilitada) e clique para buildar (<code>flutter build apk</code>) e
-                                    instalar (<code>adb install</code>) a versão mais recente do app, sem
-                                    precisar abrir o terminal - pode levar alguns minutos. Depois de instalar,
-                                    também configura <code>adb reverse</code> nesta porta, para o app testar
-                                    direto contra <code>http://127.0.0.1</code> sem precisar do IP de rede.
+                        <h6 class="card-title mb-2">App do tablet (APK)</h6>
+
+                        {% if apk_info %}
+                        {# APK disponível: mostra info, QR code e botão de download #}
+                        <div class="d-flex flex-wrap gap-4 align-items-start mb-3">
+                            {% if apk_qr_b64 %}
+                            <img src="data:image/png;base64,{{ apk_qr_b64 }}"
+                                 alt="QR code para download do APK"
+                                 style="width:140px;height:140px;image-rendering:pixelated;border:1px solid var(--bs-border-color);border-radius:.375rem;">
+                            {% endif %}
+                            <div class="flex-grow-1">
+                                <p class="small mb-1">
+                                    <strong>APK disponível</strong> &mdash;
+                                    {{ apk_info.size_mb }} MB &bull; atualizado em {{ apk_info.mtime }}
                                 </p>
+                                <p class="text-muted small mb-3">
+                                    No tablet: abra o navegador, escaneie o QR code (ou acesse o link abaixo),
+                                    baixe o arquivo e instale. Ative "Instalar apps desconhecidos" no navegador
+                                    antes se solicitado.
+                                </p>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <a href="{{ url_for('rooms.download_tablet_apk') }}"
+                                       class="btn btn-primary btn-sm">Baixar APK</a>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm"
+                                            id="replaceApkBtn">Substituir APK</button>
+                                </div>
                             </div>
-                            <button type="button" class="btn btn-outline-primary text-nowrap" id="installApkBtn">Instalar via USB</button>
                         </div>
-                        <pre class="small mt-3 mb-0 d-none" id="installApkLog" style="white-space: pre-wrap; max-height: 220px; overflow-y: auto;"></pre>
+                        <div id="uploadApkArea" class="d-none">
+                        {% else %}
+                        {# Nenhum APK: mostra só o formulário de upload #}
+                        <p class="text-muted small mb-3">
+                            Faça o upload do APK gerado com <code>flutter build apk</code>.
+                            Depois disso, um QR code aparece aqui para instalar nos tablets
+                            sem precisar de cabo USB nem <code>adb</code>.
+                        </p>
+                        <div id="uploadApkArea">
+                        {% endif %}
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <input type="file" class="form-control form-control-sm" id="apkFileInput"
+                                       accept=".apk" style="max-width:320px;">
+                                <button type="button" class="btn btn-outline-primary btn-sm" id="uploadApkBtn">
+                                    Enviar APK
+                                </button>
+                            </div>
+                            <div id="uploadApkStatus" class="small mt-2 d-none"></div>
+                        </div>
+
+                        <hr class="my-3">
+                        <details>
+                            <summary class="small text-muted" style="cursor:pointer;">
+                                Instalar via USB (requer adb + Flutter locais)
+                            </summary>
+                            <div class="mt-2 d-flex justify-content-between align-items-start flex-wrap gap-2">
+                                <p class="text-muted small mb-0">
+                                    Conecte o tablet com depuração USB habilitada nesta máquina (não no servidor).
+                                    Builda e instala em um clique; configura <code>adb reverse</code> automaticamente.
+                                </p>
+                                <button type="button" class="btn btn-outline-secondary btn-sm text-nowrap" id="installApkBtn">
+                                    Instalar via USB
+                                </button>
+                            </div>
+                            <pre class="small mt-3 mb-0 d-none" id="installApkLog"
+                                 style="white-space:pre-wrap;max-height:220px;overflow-y:auto;"></pre>
+                        </details>
                     </div>
                 </div>
 
@@ -311,6 +412,72 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <h6 class="card-title mb-3">Agenda da tela por dia</h6>
+                                    <p class="text-muted small mb-3">
+                                        Configure o horário de ligar/apagar para cada dia da semana.
+                                        Dias desmarcados ficam com a tela preta o dia inteiro.
+                                    </p>
+                                    {% set day_names = ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'] %}
+                                    {% set sched = layout_settings.screen_schedule_data %}
+                                    <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-0" id="screenScheduleTable">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th class="fw-normal small">Dia</th>
+                                                <th class="fw-normal small text-center">Ativo</th>
+                                                <th class="fw-normal small">Ligar às</th>
+                                                <th class="fw-normal small">Apagar às</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                        {% for item in sched %}
+                                        {% set d = item.day %}
+                                        <tr class="sched-row {% if not item.active %}text-muted{% endif %}" data-day="{{ d }}">
+                                            <td class="small">{{ day_names[d] }}</td>
+                                            <td class="text-center">
+                                                <input class="form-check-input sched-active" type="checkbox"
+                                                       name="day_{{ d }}_active"
+                                                       id="day_{{ d }}_active"
+                                                       {% if item.active %}checked{% endif %}>
+                                            </td>
+                                            <td>
+                                                <div class="input-group input-group-sm" style="width:100px;">
+                                                    <input type="number" class="form-control sched-hour"
+                                                           name="day_{{ d }}_on" min="0" max="23"
+                                                           value="{{ item.on }}"
+                                                           {% if not item.active %}disabled{% endif %}>
+                                                    <span class="input-group-text">h</span>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="input-group input-group-sm" style="width:100px;">
+                                                    <input type="number" class="form-control sched-hour"
+                                                           name="day_{{ d }}_off" min="0" max="23"
+                                                           value="{{ item.off }}"
+                                                           {% if not item.active %}disabled{% endif %}>
+                                                    <span class="input-group-text">h</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                        </tbody>
+                                    </table>
+                                    </div>
+                                </div>
+                            </div>
+                            <script>
+                            document.querySelectorAll('.sched-active').forEach(function(cb) {
+                                cb.addEventListener('change', function() {
+                                    var row = this.closest('tr');
+                                    var hours = row.querySelectorAll('.sched-hour');
+                                    hours.forEach(function(h) { h.disabled = !cb.checked; });
+                                    row.classList.toggle('text-muted', !cb.checked);
+                                });
+                            });
+                            </script>
 
                             <div class="card mb-3 d-none" id="tabletAdvancedPanel">
                                 <div class="card-body">
@@ -403,96 +570,145 @@
 
     <!-- ===== Permissões ===== -->
     <div class="tab-pane fade {{ 'show active' if active_tab == 'permissions' }}" id="tab-permissions">
-        <ul class="nav nav-tabs mb-3" id="permissionsTabs">
-            <li class="nav-item">
-                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-salas" type="button">Agendamento de salas</button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-relatorios" type="button">Relatórios</button>
-            </li>
-        </ul>
 
-        <div class="tab-content">
-            <div class="tab-pane fade show active" id="tab-salas">
-                <p class="text-muted small">
-                    Por padrão, qualquer usuário logado pode reservar qualquer sala ativa. Aqui você
-                    restringe quais salas só podem ser agendadas por quem pertence a determinados
-                    grupos do AD (ex: sala VIP só para o grupo da diretoria, sala de feedback aberta a todos).
-                </p>
-
-                <table class="table table-striped align-middle">
-                    <thead>
-                        <tr>
-                            <th>Sala</th>
-                            <th>Status</th>
-                            <th>Grupos com permissão</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for room in rooms %}
-                        <tr>
-                            <td>{{ room.name }}</td>
-                            <td>
-                                {% if room.is_active %}
-                                <span class="badge bg-success">Ativa</span>
-                                {% else %}
-                                <span class="badge bg-secondary">Inativa</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% set groups = room.allowed_group_cns %}
-                                {% if groups %}
-                                {% for cn in groups %}
-                                <span class="badge bg-info text-dark">{{ cn }}</span>
-                                {% endfor %}
-                                {% else %}
-                                <span class="badge bg-light text-dark border">Aberta a todos</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-end">
-                                <a href="{{ url_for('rooms.room_permissions', room_id=room.id) }}" class="btn btn-sm btn-outline-primary">Gerenciar grupos</a>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="4" class="text-center text-muted">Nenhuma sala cadastrada.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+        {% if ad_groups_error %}
+        {# Gate único — uma senha desbloqueia as duas sub-abas #}
+        <div id="permGate">
+            <div class="perm-gate-card">
+                <div class="perm-gate-lock">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+                    </svg>
+                </div>
+                <h5>Acesso restrito</h5>
+                <p class="perm-gate-sub">Entre com sua senha do AD para gerenciar permissões de agendamento e acesso a relatórios.</p>
+                <div class="w-100">
+                    <div class="input-group">
+                        <span class="input-group-text fw-medium">{{ current_user.username }}</span>
+                        <input type="password" id="permPasswordInput" class="form-control"
+                               placeholder="Senha do AD" autocomplete="current-password">
+                    </div>
+                    <div id="permAuthError" class="text-danger small mt-2 d-none"></div>
+                </div>
+                <button class="btn btn-primary" type="button" id="permLoadGroupsBtn">Entrar</button>
             </div>
+        </div>
+        {% endif %}
 
-            <div class="tab-pane fade" id="tab-relatorios">
-                <p class="text-muted small">
-                    Por padrão, só administradores veem o relatório de estatísticas de reservas.
-                    Selecione um ou mais grupos do AD para liberar o acesso também a quem
-                    pertence a algum deles (vale para todas as salas, não é por sala).
-                </p>
+        <div id="permContent" class="{{ 'd-none' if ad_groups_error else '' }}">
+            <ul class="nav nav-tabs mb-3" id="permissionsTabs">
+                <li class="nav-item">
+                    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-salas" type="button">Agendamento de salas</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-relatorios" type="button">Relatórios</button>
+                </li>
+            </ul>
 
-                {% if ad_groups_error %}
-                <div class="alert alert-warning col-md-6">{{ ad_groups_error }}</div>
-                {% elif not ad_groups %}
-                <p class="text-muted col-md-6">
-                    Nenhum grupo encontrado no AD{{ " com os prefixos %s" % (ad_group_prefixes | join(", ")) if ad_group_prefixes else "" }}.
-                </p>
-                {% else %}
-                <form method="post" action="{{ url_for('rooms.update_report_viewer_groups') }}" class="col-md-6 mb-3">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="text" id="reportGroupFilterInput" class="form-control form-control-sm mb-2"
-                           placeholder="Filtrar {{ ad_groups | length }} grupos por nome...">
-                    <div id="reportGroupCheckboxList" class="mb-2" style="max-height: 360px; overflow-y: auto;">
-                        {% for group in ad_groups %}
-                        <div class="form-check report-group-checkbox-item">
-                            <input class="form-check-input" type="checkbox" name="group_cns" value="{{ group.cn }}"
-                                   id="report-group-{{ loop.index }}" {{ "checked" if group.cn in allowed_report_group_cns else "" }}>
-                            <label class="form-check-label" for="report-group-{{ loop.index }}">
-                                {{ group.cn }}{% if group.description %} <span class="text-muted small">- {{ group.description }}</span>{% endif %}
-                            </label>
+            <div class="tab-content">
+                <!-- ----- Agendamento de salas ----- -->
+                <div class="tab-pane fade show active" id="tab-salas">
+                    <p class="text-muted small mb-3">
+                        Por padrão, qualquer usuário logado pode reservar qualquer sala ativa. Expanda
+                        uma sala para restringir o agendamento a grupos específicos do AD (administradores
+                        sempre podem reservar).
+                    </p>
+
+                    <div class="accordion" id="roomPermAccordion">
+                        {% for room in rooms %}
+                        {% set allowed = room.allowed_group_cns %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed py-2" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#roomPerm{{ room.id }}">
+                                    <span class="me-2 fw-semibold">{{ room.name }}</span>
+                                    {% if not room.is_active %}<span class="badge bg-secondary me-2">Inativa</span>{% endif %}
+                                    {% if allowed %}
+                                    {% for cn in allowed %}
+                                    <span class="badge bg-info text-dark me-1">{{ cn }}</span>
+                                    {% endfor %}
+                                    {% else %}
+                                    <span class="badge bg-light text-dark border">Aberta a todos</span>
+                                    {% endif %}
+                                </button>
+                            </h2>
+                            <div id="roomPerm{{ room.id }}" class="accordion-collapse collapse"
+                                 data-allowed-cns="{{ allowed | list | tojson | e }}"
+                                 data-room-id="{{ room.id }}">
+                                <div class="accordion-body">
+                                    <form method="post" action="{{ url_for('rooms.update_booking_groups', room_id=room.id) }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <input type="text" class="form-control form-control-sm mb-2 room-group-filter"
+                                               placeholder="Filtrar {% if ad_groups %}{{ ad_groups | length }} {% endif %}grupos...">
+                                        <div class="room-group-list mb-2" style="max-height: 260px; overflow-y: auto;">
+                                            {% if ad_groups %}
+                                            {% for group in ad_groups %}
+                                            <div class="form-check room-group-item">
+                                                <input class="form-check-input" type="checkbox" name="group_cns"
+                                                       value="{{ group.cn }}"
+                                                       id="r{{ room.id }}g{{ loop.index }}"
+                                                       {{ "checked" if group.cn in allowed else "" }}>
+                                                <label class="form-check-label" for="r{{ room.id }}g{{ loop.index }}">
+                                                    {{ group.cn }}{% if group.description %} <span class="text-muted small">- {{ group.description }}</span>{% endif %}
+                                                </label>
+                                            </div>
+                                            {% endfor %}
+                                            {% endif %}
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-sm">Salvar grupos</button>
+                                    </form>
+                                </div>
+                            </div>
                         </div>
+                        {% else %}
+                        <p class="text-muted small">Nenhuma sala cadastrada.</p>
                         {% endfor %}
                     </div>
-                    <button type="submit" class="btn btn-primary btn-sm">Salvar grupos</button>
-                </form>
-                {% endif %}
+                </div>
+
+                <!-- ----- Relatórios ----- -->
+                <div class="tab-pane fade" id="tab-relatorios">
+                    <p class="text-muted small mb-3">
+                        Por padrão, só administradores veem o relatório de estatísticas de reservas.
+                        Selecione um ou mais grupos do AD para liberar o acesso também a quem
+                        pertence a algum deles (vale para todas as salas, não é por sala).
+                    </p>
+
+                    {% if ad_groups_error %}
+                    <div id="reportGroupArea" style="max-width: 480px;">
+                        <form method="post" action="{{ url_for('rooms.update_report_viewer_groups') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="text" id="reportGroupFilterInput" class="form-control form-control-sm mb-2"
+                                   placeholder="Filtrar grupos...">
+                            <div id="reportGroupCheckboxList" class="mb-3" style="max-height: 360px; overflow-y: auto;"></div>
+                            <button type="submit" class="btn btn-primary btn-sm">Salvar grupos</button>
+                        </form>
+                    </div>
+                    {% elif not ad_groups %}
+                    <p class="text-muted">
+                        Nenhum grupo encontrado no AD{{ " com os prefixos %s" % (ad_group_prefixes | join(", ")) if ad_group_prefixes else "" }}.
+                    </p>
+                    {% else %}
+                    <form method="post" action="{{ url_for('rooms.update_report_viewer_groups') }}" style="max-width: 480px;" class="mb-3">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="text" id="reportGroupFilterInput" class="form-control form-control-sm mb-2"
+                               placeholder="Filtrar {{ ad_groups | length }} grupos por nome...">
+                        <div id="reportGroupCheckboxList" class="mb-3" style="max-height: 360px; overflow-y: auto;">
+                            {% for group in ad_groups %}
+                            <div class="form-check report-group-checkbox-item">
+                                <input class="form-check-input" type="checkbox" name="group_cns" value="{{ group.cn }}"
+                                       id="report-group-{{ loop.index }}"
+                                       {{ "checked" if group.cn in allowed_report_group_cns else "" }}>
+                                <label class="form-check-label" for="report-group-{{ loop.index }}">
+                                    {{ group.cn }}{% if group.description %} <span class="text-muted small">- {{ group.description }}</span>{% endif %}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm">Salvar grupos</button>
+                    </form>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
@@ -599,12 +815,157 @@ document.querySelectorAll(".qr-box[data-payload]").forEach(function (el) {
     });
 });
 
+// Filtro de grupos nos checkboxes server-side (quando conta de serviço está configurada)
 document.getElementById("reportGroupFilterInput")?.addEventListener("input", function () {
     const q = this.value.trim().toLowerCase();
     document.querySelectorAll("#reportGroupCheckboxList .report-group-checkbox-item").forEach(function (item) {
         item.classList.toggle("d-none", !item.textContent.toLowerCase().includes(q));
     });
 });
+
+// Filtros inline por sala (quando conta de serviço está configurada)
+document.querySelectorAll(".room-group-filter").forEach(function (input) {
+    input.addEventListener("input", function () {
+        const q = input.value.trim().toLowerCase();
+        input.closest("form").querySelectorAll(".room-group-item").forEach(function (item) {
+            item.classList.toggle("d-none", !item.textContent.toLowerCase().includes(q));
+        });
+    });
+});
+
+// Autenticação via senha do admin quando conta de serviço não está configurada
+(function () {
+    const btn = document.getElementById("permLoadGroupsBtn");
+    if (!btn) return;
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+    const allowedReportCns = new Set({{ allowed_report_group_cns | list | tojson }});
+
+    function renderCheckboxes(container, groups, allowedCns, idPrefix) {
+        container.innerHTML = "";
+        groups.forEach(function (group, i) {
+            const div = document.createElement("div");
+            div.className = "form-check room-group-item";
+            const input = document.createElement("input");
+            input.className = "form-check-input";
+            input.type = "checkbox";
+            input.name = "group_cns";
+            input.value = group.cn;
+            input.id = idPrefix + i;
+            if (allowedCns.has(group.cn)) input.checked = true;
+            const label = document.createElement("label");
+            label.className = "form-check-label";
+            label.htmlFor = idPrefix + i;
+            label.textContent = group.cn;
+            if (group.description) {
+                const span = document.createElement("span");
+                span.className = "text-muted small";
+                span.textContent = " - " + group.description;
+                label.appendChild(span);
+            }
+            div.appendChild(input);
+            div.appendChild(label);
+            container.appendChild(div);
+        });
+    }
+
+    function wireFilter(input, listEl, itemClass) {
+        input.addEventListener("input", function () {
+            const q = input.value.trim().toLowerCase();
+            listEl.querySelectorAll(itemClass).forEach(function (item) {
+                item.classList.toggle("d-none", !item.textContent.toLowerCase().includes(q));
+            });
+        });
+    }
+
+    function populateAll(groups) {
+        // Salas accordion
+        document.querySelectorAll("#roomPermAccordion .accordion-collapse").forEach(function (panel) {
+            let allowedCns;
+            try { allowedCns = new Set(JSON.parse(panel.dataset.allowedCns || "[]")); }
+            catch (e) { allowedCns = new Set(); }
+            const roomId = panel.dataset.roomId;
+            const list = panel.querySelector(".room-group-list");
+            const filter = panel.querySelector(".room-group-filter");
+            if (!list) return;
+            renderCheckboxes(list, groups, allowedCns, "dyn-r" + roomId + "g");
+            if (filter) {
+                filter.placeholder = "Filtrar " + groups.length + " grupos...";
+                wireFilter(filter, list, ".room-group-item");
+            }
+        });
+
+        // Relatórios
+        const reportList = document.getElementById("reportGroupCheckboxList");
+        const reportFilter = document.getElementById("reportGroupFilterInput");
+        if (reportList) {
+            renderCheckboxes(reportList, groups, allowedReportCns, "dyn-rep-g");
+            if (reportFilter) {
+                reportFilter.placeholder = "Filtrar " + groups.length + " grupos...";
+                wireFilter(reportFilter, reportList, ".room-group-item");
+            }
+        }
+
+        // Revela o conteúdo das abas e esconde o gate
+        document.getElementById("permContent")?.classList.remove("d-none");
+        document.getElementById("permGate")?.classList.add("d-none");
+    }
+
+    btn.addEventListener("click", function () {
+        const passwordInput = document.getElementById("permPasswordInput");
+        const errorBox = document.getElementById("permAuthError");
+        const password = passwordInput.value;
+
+        if (!password) {
+            errorBox.textContent = "Informe sua senha do AD.";
+            errorBox.classList.remove("d-none");
+            return;
+        }
+        errorBox.classList.add("d-none");
+        btn.disabled = true;
+        btn.textContent = "Verificando...";
+
+        fetch("{{ url_for('rooms.api_ad_groups') }}", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+            body: JSON.stringify({ password: password }),
+        })
+            .then(function (res) {
+                return res.json().then(
+                    function (data) { return { ok: res.ok, data: data }; },
+                    function () { return { ok: false, data: { error: "Resposta inválida do servidor." } }; }
+                );
+            })
+            .then(function (result) {
+                btn.disabled = false;
+                btn.textContent = "Entrar";
+                passwordInput.value = "";
+                if (!result.ok) {
+                    errorBox.textContent = result.data.error || "Erro ao autenticar.";
+                    errorBox.classList.remove("d-none");
+                    return;
+                }
+                // Erros em populateAll não devem mostrar "Sem resposta"
+                try {
+                    populateAll(result.data);
+                } catch (e) {
+                    console.error("Erro ao renderizar grupos:", e);
+                    document.getElementById("permContent")?.classList.remove("d-none");
+                    document.getElementById("permGate")?.classList.add("d-none");
+                }
+            })
+            .catch(function () {
+                btn.disabled = false;
+                btn.textContent = "Entrar";
+                errorBox.textContent = "Sem resposta do servidor. Verifique a conexão de rede.";
+                errorBox.classList.remove("d-none");
+            });
+    });
+
+    document.getElementById("permPasswordInput")?.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") { e.preventDefault(); btn.click(); }
+    });
+}());
 
 (function () {
     const colorPairs = [
@@ -738,6 +1099,77 @@ document.getElementById("reportGroupFilterInput")?.addEventListener("input", fun
         reader.readAsDataURL(file);
     });
 })();
+
+(function () {
+    const uploadBtn = document.getElementById("uploadApkBtn");
+    const replaceBtn = document.getElementById("replaceApkBtn");
+    const uploadArea = document.getElementById("uploadApkArea");
+    const status = document.getElementById("uploadApkStatus");
+    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+
+    if (replaceBtn && uploadArea) {
+        replaceBtn.addEventListener("click", function () {
+            uploadArea.classList.toggle("d-none");
+        });
+    }
+
+    if (uploadBtn) {
+        uploadBtn.addEventListener("click", function () {
+            const fileInput = document.getElementById("apkFileInput");
+            const file = fileInput && fileInput.files[0];
+            if (!file) {
+                status.textContent = "Selecione um arquivo .apk primeiro.";
+                status.className = "small mt-2 text-danger";
+                status.classList.remove("d-none");
+                return;
+            }
+            const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+            if (file.size > 150 * 1024 * 1024) {
+                status.textContent = "Arquivo muito grande (" + sizeMb + " MB). Máximo: 150 MB.";
+                status.className = "small mt-2 text-danger";
+                status.classList.remove("d-none");
+                return;
+            }
+            const form = new FormData();
+            form.append("apk_file", file);
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = "Enviando...";
+            status.textContent = "Aguarde...";
+            status.className = "small mt-2 text-muted";
+            status.classList.remove("d-none");
+
+            fetch("{{ url_for('rooms.upload_tablet_apk') }}", {
+                method: "POST",
+                headers: { "X-CSRFToken": csrfMeta ? csrfMeta.content : "" },
+                body: form,
+            })
+                .then(function (res) {
+                    return res.json().then(
+                        function (data) { return { ok: res.ok, data: data }; },
+                        function () { return { ok: false, data: { error: "Resposta inválida." } }; }
+                    );
+                })
+                .then(function (result) {
+                    uploadBtn.disabled = false;
+                    uploadBtn.textContent = "Enviar APK";
+                    if (!result.ok) {
+                        status.textContent = result.data.error || "Erro ao enviar.";
+                        status.className = "small mt-2 text-danger";
+                    } else {
+                        status.textContent = "APK enviado com sucesso (" + result.data.size_kb + " KB). Recarregando...";
+                        status.className = "small mt-2 text-success";
+                        setTimeout(function () { location.reload(); }, 1200);
+                    }
+                })
+                .catch(function () {
+                    uploadBtn.disabled = false;
+                    uploadBtn.textContent = "Enviar APK";
+                    status.textContent = "Sem resposta do servidor.";
+                    status.className = "small mt-2 text-danger";
+                });
+        });
+    }
+}());
 
 (function () {
     const btn = document.getElementById("installApkBtn");
