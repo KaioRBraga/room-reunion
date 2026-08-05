@@ -14,6 +14,7 @@ from app.bookings.services import (
     cancel_booking,
     create_booking,
 )
+from app.mail import send_invite_emails
 from app.extensions import db
 from app.models import Booking, Floor, Room, Unit, localnow
 
@@ -167,6 +168,21 @@ def api_create_booking():
         return jsonify({"error": str(exc)}), 403
     except BookingValidationError as exc:
         return jsonify({"error": str(exc)}), 400
+
+    # Coleta os dados enquanto ainda estamos na sessão do SQLAlchemy,
+    # antes de spawnar a thread (ORM objects não são thread-safe).
+    invite_addrs = [a.email for a in booking.attendees]
+    if invite_addrs:
+        send_invite_emails(
+            to_addrs=invite_addrs,
+            subject=booking.title,
+            room_name=booking.room.name,
+            start_str=booking.start_at.strftime("%d/%m/%Y %H:%M"),
+            end_str=booking.end_at.strftime("%H:%M"),
+            organizer_name=current_user.display_name or current_user.username,
+            description=booking.description,
+            virtual_room_url=booking.virtual_room_url,
+        )
 
     return jsonify(_booking_to_event(booking)), 201
 

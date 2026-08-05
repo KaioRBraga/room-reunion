@@ -35,7 +35,7 @@ def login():
             return render_template("auth/login.html", form=form)
 
         try:
-            display_name = get_display_name(conn, username)
+            display_name, email = get_display_name(conn, username)
             admin = is_admin(conn, username)
             group_cns = sorted(get_member_of_cns(conn, username))
         finally:
@@ -46,7 +46,7 @@ def login():
         session["ad_group_cns"] = group_cns
         session["group_checked_at"] = time.time()
 
-        upsert_user_login(username, display_name)
+        upsert_user_login(username, display_name, email)
 
         login_user(
             AppUser(

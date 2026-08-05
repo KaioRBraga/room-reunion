@@ -6,13 +6,15 @@ from app.models import User, localnow
 MIN_SEARCH_QUERY_LENGTH = 2
 
 
-def upsert_user_login(username, display_name):
+def upsert_user_login(username, display_name, email=None):
     user = db.session.get(User, username)
     if user is None:
         user = User(username=username)
         db.session.add(user)
     user.display_name = display_name
     user.last_login_at = localnow()
+    if email is not None:
+        user.email = email
     db.session.commit()
     return user
 

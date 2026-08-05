@@ -53,12 +53,18 @@ def get_display_name(conn, username):
     conn.search(
         search_base=Config.BASE_DN,
         search_filter=f"(sAMAccountName={safe_username})",
-        attributes=["displayName"],
+        attributes=["displayName", "mail"],
         search_scope=SUBTREE,
     )
-    if conn.entries and "displayName" in conn.entries[0]:
-        return conn.entries[0].displayName.value
-    return username
+    display_name = username
+    email = None
+    if conn.entries:
+        entry = conn.entries[0]
+        if "displayName" in entry and entry.displayName:
+            display_name = entry.displayName.value
+        if "mail" in entry and entry.mail:
+            email = entry.mail.value
+    return display_name, email
 
 
 def _group_dn(conn, group_cn):

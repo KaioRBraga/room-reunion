@@ -36,6 +36,15 @@ class Config:
     LDAP_SERVICE_USER = os.environ.get("LDAP_SERVICE_USER", "")
     LDAP_SERVICE_PASSWORD = os.environ.get("LDAP_SERVICE_PASSWORD", "")
 
+    # SMTP para envio de convites aos convidados de reuniões.
+    # Deixe MAIL_SERVER vazio para desativar o envio.
+    MAIL_SERVER   = os.environ.get("MAIL_SERVER", "")
+    MAIL_PORT     = int(os.environ.get("MAIL_PORT", "587"))
+    MAIL_USE_TLS  = os.environ.get("MAIL_USE_TLS", "true").lower() != "false"
+    MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "")
+    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "")
+    MAIL_FROM     = os.environ.get("MAIL_FROM", "")
+
     # Prefixos do cn dos grupos a listar na aba de permissão de salas,
     # separados por vírgula (ex: "g_,INT-" para grupos da organização e
     # grupos "de internet" por área, sem trazer os ~400 grupos nativos do
