@@ -313,18 +313,39 @@ a {
 }
 
 /* ===== Tela de autenticação (login) ===== */
+@keyframes rr-auth-gradient {
+    0%   { background-position: 0% 50%;   }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%;   }
+}
+
 .auth-shell {
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: radial-gradient(circle at top left, #11151c 0%, var(--rr-ink) 55%, #000 100%);
+    background: linear-gradient(
+        -45deg,
+        #000000,
+        #0b0b0d,
+        #00243a,
+        #004d80,
+        #007bbb,
+        #004070,
+        #0b0b0d,
+        #000000
+    );
+    background-size: 400% 400%;
+    animation: rr-auth-gradient 14s ease infinite;
 }
 
 .auth-card {
-    border: 1px solid var(--rr-border);
+    border: 1px solid rgba(0, 123, 187, 0.25);
     border-radius: var(--bs-border-radius-xl);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+    background: rgba(17, 21, 27, 0.82);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 123, 187, 0.08);
 }
 
 .auth-logo {
