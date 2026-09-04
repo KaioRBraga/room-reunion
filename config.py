@@ -65,6 +65,12 @@ class Config:
     # do início, e prazo de check-in depois do início antes de liberar a sala.
     CHECK_IN_HEADSUP_MINUTES = int(os.environ.get("CHECK_IN_HEADSUP_MINUTES", "10"))
     CHECK_IN_GRACE_MINUTES = int(os.environ.get("CHECK_IN_GRACE_MINUTES", "5"))
+
+    # Integração com o TaskMotiva: cada reserva vira uma "reunião" no calendário
+    # do TaskMotiva (barramento /api/external, header X-API-KEY). Vazio = a
+    # sincronização fica desligada; as reservas seguem funcionando normalmente.
+    TASKMOTIVA_API_URL = os.environ.get("TASKMOTIVA_API_URL", "").rstrip("/")
+    TASKMOTIVA_API_KEY = os.environ.get("TASKMOTIVA_API_KEY", "")
     DISPLAY_START_NOW_MINUTES = int(os.environ.get("DISPLAY_START_NOW_MINUTES", "30"))
 
 

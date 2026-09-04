@@ -4,6 +4,7 @@ from flask import current_app, url_for
 
 from app.extensions import db
 from app.models import Booking, BookingAttendee, DisplayLayoutSettings, Room, localnow
+from app.taskmotiva_sync import sync_booking, unsync_booking
 
 
 def _dedupe_emails(emails):
@@ -101,6 +102,7 @@ def create_booking(
         db.session.add(BookingAttendee(booking_id=booking.id, email=email))
 
     db.session.commit()
+    sync_booking(booking)  # espelha no calendário do TaskMotiva
     return booking
 
 
@@ -112,6 +114,7 @@ def cancel_booking(booking_id, cancelled_by):
     booking.cancelled_at = localnow()
     booking.cancelled_by = cancelled_by
     db.session.commit()
+    unsync_booking(booking.id)  # cancela a reunião no TaskMotiva
     return booking
 
 
@@ -132,6 +135,7 @@ def expire_no_show(booking):
         booking.cancelled_at = localnow()
         booking.cancelled_by = "auto:no-show"
         db.session.commit()
+        unsync_booking(booking.id)  # no-show: cancela a reunião no TaskMotiva
         return True
     return False
 
@@ -145,6 +149,7 @@ def check_in_booking(booking):
 def end_booking_now(booking):
     booking.end_at = max(booking.start_at, localnow())
     db.session.commit()
+    sync_booking(booking)  # encerrada mais cedo: atualiza o fim no TaskMotiva
     return booking
 
 
@@ -158,6 +163,7 @@ def extend_booking(booking, minutes=15):
 
     booking.end_at = new_end
     db.session.commit()
+    sync_booking(booking)  # prazo estendido: atualiza o fim no TaskMotiva
     return booking
 
 
