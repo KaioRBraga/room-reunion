@@ -73,6 +73,14 @@ class Config:
     TASKMOTIVA_API_KEY = os.environ.get("TASKMOTIVA_API_KEY", "")
     DISPLAY_START_NOW_MINUTES = int(os.environ.get("DISPLAY_START_NOW_MINUTES", "30"))
 
+    # SSO com o MotivaHub: o hub assina um token curto (por clique) e o Ready
+    # Room o valida em /sso, logando o usuário (casado pelo login do AD, via a
+    # conta de serviço). Segredo compartilhado — por padrão reusa a chave do
+    # barramento, que o hub já possui (mesmo valor nos três serviços). Vazio =
+    # SSO desligado.
+    SSO_SHARED_SECRET = os.environ.get("SSO_SHARED_SECRET") or TASKMOTIVA_API_KEY
+    SSO_TOKEN_MAX_AGE = int(os.environ.get("SSO_TOKEN_MAX_AGE", "120"))
+
 
 class TestConfig(Config):
     TESTING = True
