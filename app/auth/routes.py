@@ -7,15 +7,24 @@ from app.auth import AppUser, auth_bp
 from app.auth.avatar_storage import InvalidAvatarFileError, avatar_path, save_uploaded_avatar
 from app.auth.forms import LoginForm, PinForm, ProfileForm
 from app.auth.services import get_user_pin, set_user_email, set_user_pin, upsert_user_login
+from app.auth.sso import verify_sso_token
 from app.extensions import db
 from app.ldap_client import (
     LdapAuthError,
+    _build_service_connection,
     bind_user,
     get_display_name,
     get_member_of_cns,
     is_admin,
 )
 from app.models import User
+
+
+def _safe_next(target):
+    """Só aceita redirecionamento relativo, para não virar open redirect."""
+    if not target or not target.startswith("/") or target.startswith("//"):
+        return None
+    return target
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
@@ -61,6 +70,51 @@ def login():
         return redirect(next_url or url_for("bookings.calendar_view"))
 
     return render_template("auth/login.html", form=form)
+
+
+@auth_bp.route("/sso")
+def sso():
+    """Auto-login vindo do MotivaHub: valida o token curto assinado pelo hub e
+    inicia a sessão. Sem senha — a prova é o token; os dados do usuário
+    (nome, grupos, admin) vêm do AD pela conta de serviço."""
+    next_url = _safe_next(request.args.get("next"))
+    if current_user.is_authenticated:
+        return redirect(next_url or url_for("bookings.calendar_view"))
+
+    username = verify_sso_token(request.args.get("token"))
+    if not username:
+        flash("Link de acesso expirado ou inválido. Faça login para continuar.", "warning")
+        return redirect(url_for("auth.login"))
+
+    # Reconstrói o usuário via conta de serviço (sem a senha dele).
+    try:
+        conn = _build_service_connection()
+        try:
+            display_name, email = get_display_name(conn, username)
+            admin = is_admin(conn, username)
+            group_cns = sorted(get_member_of_cns(conn, username))
+        finally:
+            conn.unbind()
+    except LdapAuthError:
+        flash("Não foi possível validar seu acesso agora. Faça login.", "warning")
+        return redirect(url_for("auth.login"))
+
+    session["display_name"] = display_name
+    session["is_admin"] = admin
+    session["ad_group_cns"] = group_cns
+    session["group_checked_at"] = time.time()
+
+    upsert_user_login(username, display_name, email)
+
+    login_user(
+        AppUser(
+            username=username,
+            display_name=display_name,
+            is_admin=admin,
+            group_cns=group_cns,
+        )
+    )
+    return redirect(next_url or url_for("bookings.calendar_view"))
 
 
 @auth_bp.route("/logout")
