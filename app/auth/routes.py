@@ -86,7 +86,11 @@ def sso():
         flash("Link de acesso expirado ou inválido. Faça login para continuar.", "warning")
         return redirect(url_for("auth.login"))
 
-    # Reconstrói o usuário via conta de serviço (sem a senha dele).
+    # Reconstrói o usuário via conta de serviço (sem a senha dele). Se o AD/conta
+    # de serviço não estiver disponível, entra com ACESSO BÁSICO usando o último
+    # perfil conhecido (sem grupos nem admin) — o usuário pode fazer o login
+    # completo para liberar as permissões que dependem do AD.
+    limited = False
     try:
         conn = _build_service_connection()
         try:
@@ -96,8 +100,12 @@ def sso():
         finally:
             conn.unbind()
     except LdapAuthError:
-        flash("Não foi possível validar seu acesso agora. Faça login.", "warning")
-        return redirect(url_for("auth.login"))
+        limited = True
+        local = db.session.get(User, username)
+        display_name = (local.display_name if local else None) or username
+        email = local.email if local else None
+        admin = False
+        group_cns = []
 
     session["display_name"] = display_name
     session["is_admin"] = admin
@@ -114,6 +122,12 @@ def sso():
             group_cns=group_cns,
         )
     )
+    if limited:
+        flash(
+            "Entramos com acesso básico. Para reservar salas e usar recursos que "
+            "dependem de permissão, faça o login completo.",
+            "info",
+        )
     return redirect(next_url or url_for("bookings.calendar_view"))
 
 
