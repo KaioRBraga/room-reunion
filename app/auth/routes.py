@@ -225,6 +225,46 @@ def upload_avatar():
     return redirect(url_for("auth.profile"))
 
 
+@auth_bp.route("/profile/face", methods=["POST"])
+@login_required
+def register_face():
+    """Cadastra o encoding facial via foto tirada pela webcam (sem alterar o avatar)."""
+    from io import BytesIO
+    from PIL import Image, UnidentifiedImageError
+    from app.auth.avatar_storage import _compute_face_encoding
+
+    file = request.files.get("face_image")
+    if not file:
+        return jsonify({"ok": False, "error": "Imagem não recebida."}), 400
+
+    data = file.read()
+    if not data:
+        return jsonify({"ok": False, "error": "Arquivo vazio."}), 400
+
+    try:
+        image = Image.open(BytesIO(data))
+        image.load()
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+    except (UnidentifiedImageError, Exception):
+        return jsonify({"ok": False, "error": "Imagem inválida."}), 400
+
+    encoding_json = _compute_face_encoding(image)
+    if encoding_json is None:
+        return jsonify({
+            "ok": False,
+            "error": "Nenhum rosto detectado. Posicione-se de frente para a câmera e tente novamente.",
+        }), 422
+
+    user = db.session.get(User, current_user.username)
+    if user is None:
+        user = User(username=current_user.username)
+        db.session.add(user)
+    user.face_encoding = encoding_json
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
 @auth_bp.route("/profile/photo/<username>")
 @login_required
 def avatar_image(username):
