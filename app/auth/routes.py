@@ -6,7 +6,7 @@ from flask_login import current_user, login_required, login_user, logout_user
 from app.auth import AppUser, auth_bp
 from app.auth.avatar_storage import InvalidAvatarFileError, avatar_path, save_uploaded_avatar
 from app.auth.forms import LoginForm, PinForm, ProfileForm
-from app.auth.services import get_user_pin, set_user_email, set_user_pin, upsert_user_login
+from app.auth.services import get_user_pin, save_face_encoding, set_user_email, set_user_pin, upsert_user_login
 from app.auth.sso import verify_sso_token
 from app.extensions import db
 from app.ldap_client import (
@@ -202,7 +202,7 @@ def upload_avatar():
     old_filename = user.avatar_filename if user else None
 
     try:
-        new_filename = save_uploaded_avatar(file, old_filename=old_filename)
+        new_filename, encoding_json = save_uploaded_avatar(file, old_filename=old_filename)
     except InvalidAvatarFileError as exc:
         flash(str(exc), "danger")
         return redirect(url_for("auth.profile"))
@@ -211,8 +211,17 @@ def upload_avatar():
         user = User(username=current_user.username)
         db.session.add(user)
     user.avatar_filename = new_filename
+    user.face_encoding = encoding_json
     db.session.commit()
-    flash("Foto de perfil atualizada.", "success")
+
+    if encoding_json:
+        flash("Foto de perfil atualizada. Reconhecimento facial ativado.", "success")
+    else:
+        flash(
+            "Foto atualizada, mas nenhum rosto foi detectado. "
+            "Envie um retrato frontal para ativar o reconhecimento facial.",
+            "warning",
+        )
     return redirect(url_for("auth.profile"))
 
 

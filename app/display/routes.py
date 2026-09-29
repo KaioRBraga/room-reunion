@@ -1,8 +1,9 @@
+import time
 from datetime import datetime, timedelta
 
 from flask import current_app, g, jsonify, request
 
-from app.auth.services import verify_user_pin
+from app.auth.services import find_user_by_face, verify_user_pin
 from app.bookings.services import (
     BookingConflictError,
     BookingPermissionError,
@@ -19,6 +20,12 @@ from app.display.auth import device_required
 from app.extensions import db
 from app.ldap_client import LdapAuthError, get_member_of_cns_for_user
 from app.models import User, localnow
+
+
+# Rate-limit simples em memória: evita processar vários frames simultâneos da mesma sala.
+# {room_id: last_attempt_timestamp}
+_face_checkin_last = {}
+_FACE_CHECKIN_COOLDOWN = 2.0  # segundos
 
 
 def _parse_display_dt(value):
@@ -51,6 +58,64 @@ def check_in():
         return error
     check_in_booking(booking)
     return jsonify(get_display_status(g.display_room))
+
+
+@display_bp.route("/face-checkin", methods=["POST"])
+@device_required
+def face_checkin():
+    """Check-in automático via reconhecimento facial.
+
+    Recebe um frame JPEG (campo "frame" em multipart/form-data), compara o rosto
+    com os encodings dos candidatos da reserva ativa e faz check-in se houver match.
+    Retorna {"status": "checked_in", "user": nome} ou {"status": "no_match"/"no_booking"}.
+    """
+    room = g.display_room
+    now = time.monotonic()
+    last = _face_checkin_last.get(room.id, 0)
+    if now - last < _FACE_CHECKIN_COOLDOWN:
+        return jsonify({"status": "throttled"}), 200
+    _face_checkin_last[room.id] = now
+
+    booking = get_actionable_booking(room)
+    if booking is None or booking.checked_in_at is not None:
+        return jsonify({"status": "no_booking"}), 200
+
+    frame_file = request.files.get("frame")
+    if not frame_file:
+        return jsonify({"error": "frame ausente"}), 400
+
+    try:
+        from PIL import Image
+        import numpy as np
+        img = Image.open(frame_file.stream).convert("RGB")
+        frame_array = np.array(img)
+    except Exception:
+        return jsonify({"error": "frame inválido"}), 400
+
+    candidate_usernames = _booking_face_candidates(booking)
+    matched_username = find_user_by_face(frame_array, candidate_usernames)
+
+    if matched_username is None:
+        return jsonify({"status": "no_match"}), 200
+
+    check_in_booking(booking)
+    user = db.session.get(User, matched_username)
+    display_name = (user.display_name or matched_username) if user else matched_username
+    return jsonify({"status": "checked_in", "user": display_name}), 200
+
+
+def _booking_face_candidates(booking) -> list:
+    """Retorna lista de usernames candidatos ao check-in (organizador + convidados)."""
+    from app.models import User as UserModel
+    usernames = {booking.organizer_username}
+    for att in booking.attendees:
+        if att.username:
+            usernames.add(att.username)
+        elif att.email:
+            u = UserModel.query.filter_by(email=att.email).first()
+            if u:
+                usernames.add(u.username)
+    return list(usernames)
 
 
 @display_bp.route("/end", methods=["POST"])

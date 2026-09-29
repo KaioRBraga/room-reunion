@@ -42,6 +42,7 @@ dependencies:
   google_fonts: ^6.2.1
   wakelock_plus: ^1.2.8
   screen_brightness: ^0.2.2
+  camera: ^0.11.0+2
 
 dev_dependencies:
   flutter_test:

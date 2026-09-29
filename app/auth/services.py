@@ -1,3 +1,5 @@
+import json
+
 from app.auth.pin_crypto import decrypt_pin, encrypt_pin
 from app.extensions import db
 from app.ldap_client import LdapAuthError, search_people
@@ -53,6 +55,45 @@ def get_user_pin(username):
     if user is None:
         return None
     return decrypt_pin(user.pin_encrypted)
+
+
+def save_face_encoding(username: str, encoding_json) -> None:
+    """Persiste (ou limpa) o encoding facial do usuário."""
+    user = db.session.get(User, username)
+    if user:
+        user.face_encoding = encoding_json
+        db.session.commit()
+
+
+def find_user_by_face(frame_array, candidate_usernames: list) -> str | None:
+    """Compara o frame com os encodings dos candidatos e retorna o username do match.
+
+    Retorna None se nenhum rosto for detectado no frame ou nenhum candidato bater.
+    """
+    try:
+        import numpy as np
+        import face_recognition as fr
+    except Exception:
+        return None
+
+    unknown_encodings = fr.face_encodings(frame_array)
+    if not unknown_encodings:
+        return None
+
+    users = User.query.filter(
+        User.username.in_(candidate_usernames),
+        User.face_encoding.isnot(None),
+    ).all()
+    if not users:
+        return None
+
+    known = [np.array(json.loads(u.face_encoding)) for u in users]
+    names = [u.username for u in users]
+
+    matches = fr.compare_faces(known, unknown_encodings[0], tolerance=0.50)
+    distances = fr.face_distance(known, unknown_encodings[0])
+    best = int(np.argmin(distances))
+    return names[best] if matches[best] else None
 
 
 def search_users(query, limit=10):

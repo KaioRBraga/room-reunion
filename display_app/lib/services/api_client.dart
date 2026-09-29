@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -72,6 +73,19 @@ class ApiClient {
         'attendees_count': attendeesCount,
         if (virtualRoomUrl != null && virtualRoomUrl.isNotEmpty) 'virtual_room_url': virtualRoomUrl,
       });
+
+  /// Envia um frame JPEG para o servidor e retorna o mapa de resposta.
+  /// {"status": "checked_in", "user": nome} ou {"status": "no_match"/"no_booking"}.
+  Future<Map<String, dynamic>> faceCheckIn(Uint8List jpegFrame) async {
+    final request = http.MultipartRequest('POST', _uri('/api/display/face-checkin'))
+      ..headers['X-Display-Token'] = token
+      ..files.add(http.MultipartFile.fromBytes('frame', jpegFrame, filename: 'frame.jpg'));
+    final streamed = await _http
+        .send(request)
+        .timeout(_requestTimeout, onTimeout: _onTimeout);
+    final body = await streamed.stream.bytesToString();
+    return jsonDecode(body) as Map<String, dynamic>;
+  }
 
   Future<DisplayStatus> _post(String path, {Map<String, dynamic>? body}) async {
     final resp = await _http

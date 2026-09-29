@@ -293,6 +293,9 @@ class User(db.Model):
     # confirmação de senha - ver app/auth/pin_crypto.py.
     pin_encrypted = db.Column(db.String(255), nullable=True)
     avatar_filename = db.Column(db.String(255), nullable=True)
+    # Vetor facial serializado como JSON (128 floats do face_recognition).
+    # None = sem foto cadastrada ou rosto não detectado na foto.
+    face_encoding = db.Column(db.Text, nullable=True)
     last_login_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 

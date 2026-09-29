@@ -9,6 +9,7 @@ import '../services/api_client.dart';
 import '../services/device_config.dart';
 import '../theme/app_colors.dart';
 import '../widgets/display_body.dart';
+import '../widgets/face_scan_overlay.dart';
 import '../widgets/pin_booking_sheet.dart';
 import '../widgets/start_now_pin_sheet.dart';
 
@@ -211,21 +212,33 @@ class _DisplayScreenState extends State<DisplayScreen> {
       );
     }
 
+    final showFaceScan = status.status == DisplayStatusKind.startingSoon &&
+        (status.currentMeeting == null || !status.currentMeeting!.checkedIn);
+
     return Scaffold(
       body: GestureDetector(
         onLongPress: widget.onReconfigure,
-        child: DisplayBody(
-          status: status,
-          now: DateTime.now(),
-          busy: _busy,
-          onCheckIn: () => _runAction(_client.checkIn, successMessage: 'Check-in confirmado!'),
-          onEnd: () => _runAction(_client.endMeeting, successMessage: 'Reunião encerrada.'),
-          onExtend: () => _runAction(
-            () => _client.extend(minutes: 15),
-            successMessage: 'Reunião estendida em 15 minutos.',
-          ),
-          onStartNow: _onStartNow,
-          onSlotTap: _onSlotTap,
+        child: Stack(
+          children: [
+            DisplayBody(
+              status: status,
+              now: DateTime.now(),
+              busy: _busy,
+              onCheckIn: () => _runAction(_client.checkIn, successMessage: 'Check-in confirmado!'),
+              onEnd: () => _runAction(_client.endMeeting, successMessage: 'Reunião encerrada.'),
+              onExtend: () => _runAction(
+                () => _client.extend(minutes: 15),
+                successMessage: 'Reunião estendida em 15 minutos.',
+              ),
+              onStartNow: _onStartNow,
+              onSlotTap: _onSlotTap,
+            ),
+            if (showFaceScan)
+              FaceScanOverlay(
+                api: _client,
+                onCheckInSuccess: (_) => _refresh(),
+              ),
+          ],
         ),
       ),
     );
