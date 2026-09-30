@@ -1,3 +1,4 @@
+import json
 import os
 from io import BytesIO
 from uuid import uuid4
@@ -61,7 +62,21 @@ def save_uploaded_avatar(file_storage, old_filename=None):
             except OSError:
                 current_app.logger.warning("Não foi possível remover avatar antigo: %s", old_path)
 
-    return new_filename
+    encoding_json = _compute_face_encoding(image)
+    return new_filename, encoding_json
+
+
+def _compute_face_encoding(pil_image):
+    """Retorna JSON com o vetor facial (128 floats) ou None se nenhum rosto detectado."""
+    try:
+        import numpy as np
+        import face_recognition as fr
+        encodings = fr.face_encodings(np.array(pil_image))
+        if encodings:
+            return json.dumps(encodings[0].tolist())
+    except Exception:
+        current_app.logger.warning("face_recognition indisponível ou erro ao computar encoding.")
+    return None
 
 
 def avatar_path(filename):

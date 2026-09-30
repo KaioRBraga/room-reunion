@@ -253,9 +253,26 @@ a {
 }
 
 /* ===== Sidebar / shell do app ===== */
+.app-shell {
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
 .app-sidebar {
+    width: 220px;
+    flex: none;
+    height: 100vh;
+    overflow-y: auto;
     background: var(--rr-ink) !important;
-    border-radius: var(--bs-border-radius-lg);
+    border-right: 1px solid var(--rr-border);
+}
+
+.app-main {
+    flex: 1;
+    height: 100vh;
+    overflow-y: auto;
+    min-width: 0;
 }
 
 .app-sidebar .brand-link {

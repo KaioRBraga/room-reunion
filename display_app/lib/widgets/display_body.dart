@@ -155,12 +155,13 @@ class DisplayBody extends StatelessWidget {
   Widget _primaryAction({bool compact = false}) {
     switch (status.status) {
       case DisplayStatusKind.available:
-        return _bigActionButton(
+        final mainBtn = _bigActionButton(
           icon: Icons.play_arrow_rounded,
           label: 'Iniciar agora',
           onPressed: busy ? null : onStartNow,
           compact: compact,
         );
+        return mainBtn;
       case DisplayStatusKind.startingSoon:
         if (status.currentMeeting?.checkedIn == true) {
           return _confirmedBadge();

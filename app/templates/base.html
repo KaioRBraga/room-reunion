@@ -26,8 +26,7 @@
       data-primary-color="{{ site_branding.primary_color }}"
       data-secondary-color="{{ site_branding.secondary_color }}">
     {% if current_user.is_authenticated %}
-    <nav class="app-sidebar d-flex flex-column p-3 shadow"
-         style="width: 220px; min-height: 70vh; max-height: calc(100vh - 32px); position: fixed; top: 16px; left: 16px; overflow-y: auto; z-index: 1030;">
+    <nav class="app-sidebar d-flex flex-column p-3">
         <a href="{{ url_for('bookings.calendar_view') }}" class="brand-link d-flex align-items-center gap-2 mb-3">
             <img src="{{ site_icon_url }}" alt="" class="brand-mark-img">
             <span class="fs-6 fw-bold">ReadyRoom</span>
@@ -78,7 +77,7 @@
     </nav>
     {% endif %}
 
-    <div style="{{ 'margin-left: 252px;' if current_user.is_authenticated else '' }}">
+    <div class="{{ 'app-main' if current_user.is_authenticated else '' }}">
         <div class="container-fluid px-4 py-3">
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}

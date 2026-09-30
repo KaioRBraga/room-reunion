@@ -1,4 +1,5 @@
 import os
+import threading
 
 from flask import Flask, flash, jsonify, redirect, request, url_for
 from flask_login import current_user
@@ -37,6 +38,14 @@ def create_app(config_class=Config):
         db.create_all()
         ensure_columns(db)
         ensure_default_floor(db)
+
+    def _warmup_face_recognition():
+        try:
+            import face_recognition  # noqa: F401
+        except Exception:
+            pass
+
+    threading.Thread(target=_warmup_face_recognition, daemon=True).start()
 
     def _is_ajax():
         return bool(
