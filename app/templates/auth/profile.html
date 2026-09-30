@@ -105,14 +105,23 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body text-center">
-                <p class="text-muted small mb-2">Posicione-se de frente para a câmera e clique em <strong>Capturar</strong>.</p>
                 <div id="faceError" class="alert alert-danger d-none mb-2"></div>
-                <video id="faceVideo" autoplay playsinline muted class="rounded mb-0 w-100" style="max-width:360px;"></video>
-                <canvas id="faceCanvas" class="d-none"></canvas>
+
+                <div id="faceWebcamWrap">
+                    <p class="text-muted small mb-2">Posicione-se de frente para a câmera e clique em <strong>Capturar</strong>.</p>
+                    <video id="faceVideo" autoplay playsinline muted class="rounded mb-0 w-100" style="max-width:360px;"></video>
+                    <canvas id="faceCanvas" class="d-none"></canvas>
+                </div>
+
+                <div id="faceFallbackWrap" class="d-none">
+                    <p class="text-muted small mb-2">Selecione uma foto com seu rosto claramente visível.</p>
+                    <input type="file" id="faceFallbackInput" accept="image/*" capture="user" class="form-control">
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                 <button type="button" id="faceCaptureBtn" class="btn btn-primary">Capturar</button>
+                <button type="button" id="faceFallbackSendBtn" class="btn btn-primary d-none">Enviar foto</button>
             </div>
         </div>
     </div>

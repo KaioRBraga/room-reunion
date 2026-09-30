@@ -10,6 +10,7 @@ import '../services/device_config.dart';
 import '../theme/app_colors.dart';
 import '../widgets/display_body.dart';
 import '../widgets/face_scan_overlay.dart';
+import '../widgets/face_start_now_sheet.dart';
 import '../widgets/pin_booking_sheet.dart';
 import '../widgets/start_now_pin_sheet.dart';
 
@@ -140,6 +141,15 @@ class _DisplayScreenState extends State<DisplayScreen> {
     );
   }
 
+  void _onStartNowFace() {
+    showFaceStartNowSheet(
+      context: context,
+      api: _client,
+      onSuccess: _refresh,
+      onFallback: _onStartNow,
+    );
+  }
+
   void _onSlotTap(DateTime start, DateTime end) {
     showPinBookingSheet(
       context: context,
@@ -230,7 +240,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
                 () => _client.extend(minutes: 15),
                 successMessage: 'Reunião estendida em 15 minutos.',
               ),
-              onStartNow: _onStartNow,
+              onStartNow: _onStartNowFace,
               onSlotTap: _onSlotTap,
             ),
             if (showFaceScan)

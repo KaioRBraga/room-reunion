@@ -118,6 +118,62 @@ def _booking_face_candidates(booking) -> list:
     return list(usernames)
 
 
+@display_bp.route("/face-start-now", methods=["POST"])
+@device_required
+def face_start_now():
+    """Cria reserva imediata via reconhecimento facial, sem PIN.
+
+    Recebe frame JPEG (campo "frame"), identifica o usuário entre todos com
+    encoding cadastrado e cria a reserva em nome dele.
+    """
+    room = g.display_room
+
+    frame_file = request.files.get("frame")
+    if not frame_file:
+        return jsonify({"error": "frame ausente"}), 400
+
+    try:
+        from PIL import Image
+        import numpy as np
+        img = Image.open(frame_file.stream).convert("RGB")
+        frame_array = np.array(img)
+    except Exception:
+        return jsonify({"error": "frame inválido"}), 400
+
+    all_usernames = [
+        u.username for u in User.query.filter(User.face_encoding.isnot(None)).all()
+    ]
+    if not all_usernames:
+        return jsonify({"status": "no_match"}), 200
+
+    matched_username = find_user_by_face(frame_array, all_usernames)
+    if matched_username is None:
+        return jsonify({"status": "no_match"}), 200
+
+    user = db.session.get(User, matched_username)
+    display_name = (user.display_name or matched_username) if user else matched_username
+
+    now = localnow()
+    minutes = current_app.config["DISPLAY_START_NOW_MINUTES"]
+
+    try:
+        create_booking(
+            room_id=room.id,
+            title="Reunião imediata",
+            organizer_username=matched_username,
+            organizer_display_name=display_name,
+            start_at=now,
+            end_at=now + timedelta(minutes=minutes),
+            skip_permission_check=True,
+        )
+    except BookingConflictError as exc:
+        return jsonify({"error": str(exc)}), 409
+    except BookingValidationError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify({"status": "started", "user": display_name}), 201
+
+
 @display_bp.route("/end", methods=["POST"])
 @device_required
 def end():
