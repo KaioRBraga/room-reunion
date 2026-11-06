@@ -33,6 +33,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
   Timer? _tickTimer;
 
   bool _screenDimmed = false;
+  bool _serverDim = false;
 
   // Agenda por dia recebida do servidor; default até o primeiro poll chegar.
   List<DaySchedule> _screenSchedule = DaySchedule.defaultSchedule();
@@ -77,7 +78,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
   }
 
   Future<void> _applyScreenSchedule() async {
-    final night = _isNightHour();
+    final night = _isNightHour() || _serverDim;
     if (night == _screenDimmed) return;
     setState(() => _screenDimmed = night);
     if (night) {
@@ -95,7 +96,9 @@ class _DisplayScreenState extends State<DisplayScreen> {
         _status = status;
         _error = null;
         _screenSchedule = status.layout.screenSchedule;
+        _serverDim = status.screenDim;
       });
+      unawaited(_applyScreenSchedule());
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
