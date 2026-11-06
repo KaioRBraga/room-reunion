@@ -189,10 +189,12 @@ class DisplayLayoutSettings {
       agendaPosition: _parseAgendaPosition(json['agenda_position'] as String?),
       buttonPosition: _parseButtonPosition(json['button_position'] as String?),
       logoUrl: json['logo_url'] as String?,
-      screenSchedule: (json['screen_schedule'] as List<dynamic>?)
-              ?.map((e) => DaySchedule.fromJson(e as Map<String, dynamic>))
-              .toList() ??
-          DaySchedule.defaultSchedule(),
+      screenSchedule: () {
+        final raw = (json['screen_schedule'] as List<dynamic>?)
+            ?.map((e) => DaySchedule.fromJson(e as Map<String, dynamic>))
+            .toList();
+        return (raw == null || raw.isEmpty) ? DaySchedule.defaultSchedule() : raw;
+      }(),
     );
   }
 
@@ -212,6 +214,7 @@ class DisplayStatus {
   final List<MeetingSummary> todaySchedule;
   final DateTime serverTime;
   final DisplayLayoutSettings layout;
+  final bool screenDim;
 
   DisplayStatus({
     required this.room,
@@ -222,6 +225,7 @@ class DisplayStatus {
     required this.todaySchedule,
     required this.serverTime,
     this.layout = DisplayLayoutSettings.defaults,
+    this.screenDim = false,
   });
 
   factory DisplayStatus.fromJson(Map<String, dynamic> json) {
@@ -242,6 +246,7 @@ class DisplayStatus {
           .toList(),
       serverTime: DateTime.parse(json['server_time'] as String),
       layout: DisplayLayoutSettings.fromJson(json['layout'] as Map<String, dynamic>?),
+      screenDim: json['screen_dim'] as bool? ?? false,
     );
   }
 }

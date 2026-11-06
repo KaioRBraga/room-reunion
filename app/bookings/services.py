@@ -261,6 +261,7 @@ def get_display_status(room):
         "next_meeting": _booking_summary(next_booking, now) if next_booking else None,
         "check_in_deadline": check_in_deadline.isoformat() if check_in_deadline else None,
         "today_schedule": [_booking_summary(b, now) for b in today_bookings],
+        "screen_dim": room.is_screen_dim_now(),
         "server_time": now.isoformat(),
         "layout": _layout_payload(),
     }

@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:async' show Timer, unawaited;
 
 import 'package:flutter/material.dart';
 import 'package:screen_brightness/screen_brightness.dart';
@@ -46,7 +46,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
       if (!day.active) return true;
       final h = now.hour;
       return h >= day.offHour || h < day.onHour;
-    } catch (_) {
+    } on StateError {
       return false;
     }
   }
@@ -61,16 +61,17 @@ class _DisplayScreenState extends State<DisplayScreen> {
     _tickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
         setState(() {});
-        _applyScreenSchedule();
+        unawaited(_applyScreenSchedule());
       }
     });
-    _applyScreenSchedule();
+    unawaited(_applyScreenSchedule());
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
     _tickTimer?.cancel();
+    _client.close();
     ScreenBrightness().resetScreenBrightness();
     super.dispose();
   }
@@ -119,6 +120,7 @@ class _DisplayScreenState extends State<DisplayScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      unawaited(_refresh());
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -248,8 +250,43 @@ class _DisplayScreenState extends State<DisplayScreen> {
                 api: _client,
                 onCheckInSuccess: (_) => _refresh(),
               ),
+            if (_error != null)
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: _OfflineBanner(),
+              ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// Faixa discreta no topo indicando perda de conexão com o servidor.
+class _OfflineBanner extends StatelessWidget {
+  const _OfflineBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black.withValues(alpha: 0.72),
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.wifi_off, size: 14, color: Colors.white70),
+          const SizedBox(width: 6),
+          Text(
+            'Sem conexão com o servidor — exibindo dados anteriores',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.8),
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }

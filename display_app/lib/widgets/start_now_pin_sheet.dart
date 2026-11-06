@@ -109,7 +109,7 @@ class _StartNowPinFormState extends State<_StartNowPinForm> {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
-                    color: AppColors.border,
+                    color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -147,23 +147,40 @@ class _StartNowPinFormState extends State<_StartNowPinForm> {
                 Text(_error!, style: const TextStyle(color: Colors.redAccent)),
               ],
               const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _busy ? null : _submit,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              Opacity(
+                opacity: _busy ? 0.6 : 1.0,
+                child: Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(999),
+                  clipBehavior: Clip.antiAlias,
+                  elevation: 0,
+                  child: InkWell(
+                    onTap: _busy ? null : _submit,
+                    splashColor: Colors.black.withValues(alpha: 0.08),
+                    highlightColor: Colors.black.withValues(alpha: 0.04),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      alignment: Alignment.center,
+                      child: _busy
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Color(0xFF0F172A),
+                              ),
+                            )
+                          : const Text(
+                              'Iniciar agora',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF0F172A),
+                                fontSize: 15,
+                              ),
+                            ),
+                    ),
                   ),
-                  child: _busy
-                      ? const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Text('Iniciar agora', style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
             ],

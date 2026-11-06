@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/display_status.dart';
-import '../theme/app_colors.dart';
 
 class DayTimeline extends StatefulWidget {
   final List<MeetingSummary> events;
@@ -100,14 +99,19 @@ class _DayTimelineState extends State<DayTimeline> {
                   SizedBox(
                     width: 52,
                     child: Padding(
-                      padding: const EdgeInsets.only(left: 14),
-                      child: Text(
-                        '${h.toString().padLeft(2, '0')}:00',
-                        style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
-                      ),
+                      padding: const EdgeInsets.only(left: 14, top: 2),
+                      child: () {
+                        final nowMin = widget.now.hour * 60 + widget.now.minute;
+                        final hMin = h * 60;
+                        final hide = (nowMin - hMin).abs() < 12;
+                        return Text(
+                          hide ? '' : '${h.toString().padLeft(2, '0')}:00',
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+                        );
+                      }(),
                     ),
                   ),
-                  const Expanded(child: Divider(height: 1, color: AppColors.border)),
+                  Expanded(child: Container(height: 1, color: Colors.white.withValues(alpha: 0.18))),
                   const SizedBox(width: 14),
                 ],
               ),
@@ -120,8 +124,8 @@ class _DayTimelineState extends State<DayTimeline> {
               height: 30 * widget.pixelsPerMinute,
               child: Container(
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.22),
-                  border: Border.all(color: AppColors.primary, width: 1.5),
+                  color: Colors.white.withValues(alpha: 0.15),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 1.5),
                   borderRadius: BorderRadius.circular(6),
                 ),
               ),
@@ -137,27 +141,40 @@ class _DayTimelineState extends State<DayTimeline> {
                 margin: const EdgeInsets.only(bottom: 2),
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: event.isPast
-                      ? AppColors.surfaceAlt
-                      : AppColors.primary.withValues(alpha: 0.85),
+                  color: Colors.black.withValues(alpha: event.isPast ? 0.18 : 0.28),
                   borderRadius: BorderRadius.circular(6),
                   border: Border(
                     left: BorderSide(
-                      color: event.isPast ? AppColors.border : AppColors.primaryDark,
+                      color: Colors.white.withValues(alpha: event.isPast ? 0.35 : 0.6),
                       width: 3,
                     ),
                   ),
                 ),
                 alignment: Alignment.topLeft,
-                child: Text(
-                  '${event.organizer} · ${event.title}',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: event.isPast ? AppColors.textMuted : Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      event.organizer,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: event.isPast ? 0.45 : 0.65),
+                        fontSize: 10,
+                      ),
+                    ),
+                    Text(
+                      event.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: event.isPast ? 0.55 : 0.9),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -168,25 +185,28 @@ class _DayTimelineState extends State<DayTimeline> {
               right: 0,
               child: Row(
                 children: [
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 48),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(4),
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
                     ),
+                  ),
+                  Expanded(child: Container(height: 2, color: Colors.white.withValues(alpha: 0.75))),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
                     child: Text(
                       timeFormat.format(widget.now),
                       style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
                         color: Colors.white,
                       ),
                     ),
                   ),
-                  const Expanded(
-                    child: Divider(height: 1, color: AppColors.primary, thickness: 1.5),
-                  ),
+                  Expanded(child: Container(height: 2, color: Colors.white.withValues(alpha: 0.75))),
                   const SizedBox(width: 14),
                 ],
               ),

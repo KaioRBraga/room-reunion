@@ -39,6 +39,8 @@ _NEW_COLUMNS = [
     ("display_layout_settings", "button_position", "VARCHAR(20) DEFAULT 'status_banner'"),
     ("display_layout_settings", "logo_filename", "VARCHAR(255)"),
     ("display_layout_settings", "screen_schedule", "TEXT"),
+    ("room", "dim_start", "TIME"),
+    ("room", "dim_end", "TIME"),
 ]
 
 

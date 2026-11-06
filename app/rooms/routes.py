@@ -54,6 +54,8 @@ def _room_to_pin(room):
         "min_attendees": room.min_attendees,
         "business_hours_start": room.business_hours_start.strftime("%H:%M") if room.business_hours_start else "",
         "business_hours_end": room.business_hours_end.strftime("%H:%M") if room.business_hours_end else "",
+        "dim_start": room.dim_start.strftime("%H:%M") if room.dim_start else "",
+        "dim_end": room.dim_end.strftime("%H:%M") if room.dim_end else "",
     }
 
 
@@ -253,6 +255,8 @@ def create_pin():
         pos_y = _clamp01(float(data["pos_y"]))
         business_hours_start = _parse_time_field(data.get("business_hours_start"))
         business_hours_end = _parse_time_field(data.get("business_hours_end"))
+        dim_start = _parse_time_field(data.get("dim_start"))
+        dim_end = _parse_time_field(data.get("dim_end"))
     except (TypeError, ValueError):
         return jsonify({"error": "Dados inválidos."}), 400
 
@@ -261,6 +265,9 @@ def create_pin():
 
     if business_hours_start and business_hours_end and business_hours_end <= business_hours_start:
         return jsonify({"error": "O horário comercial de fim deve ser depois do início."}), 400
+
+    if dim_start and dim_end and dim_end <= dim_start:
+        return jsonify({"error": "O horário de fim da tela deve ser depois do início."}), 400
 
     if Room.query.filter_by(name=name).first():
         return jsonify({"error": f"Já existe uma sala chamada '{name}'."}), 409
@@ -274,6 +281,8 @@ def create_pin():
         pos_y=pos_y,
         business_hours_start=business_hours_start,
         business_hours_end=business_hours_end,
+        dim_start=dim_start,
+        dim_end=dim_end,
     )
     db.session.add(room)
     db.session.commit()
@@ -334,6 +343,25 @@ def update_pin(room_id):
             return jsonify({"error": "O horário comercial de fim deve ser depois do início."}), 400
         room.business_hours_start = new_start
         room.business_hours_end = new_end
+
+    if "dim_start" in data or "dim_end" in data:
+        try:
+            new_dim_start = (
+                _parse_time_field(data["dim_start"])
+                if "dim_start" in data
+                else room.dim_start
+            )
+            new_dim_end = (
+                _parse_time_field(data["dim_end"])
+                if "dim_end" in data
+                else room.dim_end
+            )
+        except ValueError:
+            return jsonify({"error": "Horário inválido."}), 400
+        if new_dim_start and new_dim_end and new_dim_end <= new_dim_start:
+            return jsonify({"error": "O horário de fim da tela deve ser depois do início."}), 400
+        room.dim_start = new_dim_start
+        room.dim_end = new_dim_end
 
     if "pos_x" in data and "pos_y" in data:
         try:
@@ -885,6 +913,16 @@ def _apply_room_form(room, form):
         if form.business_hours_end.data
         else None
     )
+    room.dim_start = (
+        datetime.strptime(form.dim_start.data, "%H:%M").time()
+        if form.dim_start.data
+        else None
+    )
+    room.dim_end = (
+        datetime.strptime(form.dim_end.data, "%H:%M").time()
+        if form.dim_end.data
+        else None
+    )
 
 
 @rooms_bp.route("/new", methods=["GET", "POST"])
@@ -917,6 +955,8 @@ def edit_room(room_id):
         form.business_hours_end.data = (
             room.business_hours_end.strftime("%H:%M") if room.business_hours_end else ""
         )
+        form.dim_start.data = room.dim_start.strftime("%H:%M") if room.dim_start else ""
+        form.dim_end.data = room.dim_end.strftime("%H:%M") if room.dim_end else ""
     if form.validate_on_submit():
         _apply_room_form(room, form)
         db.session.commit()

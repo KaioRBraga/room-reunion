@@ -103,8 +103,18 @@ class _FaceStartNowBodyState extends State<_FaceStartNowBody> {
       }
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) {
+        Navigator.of(context).pop();
+        widget.onFallback?.call();
+      }
     } catch (_) {
       if (mounted) setState(() => _error = 'Erro ao processar imagem.');
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) {
+        Navigator.of(context).pop();
+        widget.onFallback?.call();
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -118,31 +128,47 @@ class _FaceStartNowBodyState extends State<_FaceStartNowBody> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Center(
-            child: Container(
-              width: 36, height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(999),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
+          decoration: const BoxDecoration(
+            gradient: AppColors.brandGradient,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
               ),
-            ),
+              const Text(
+                'Iniciar reunião com rosto',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 18),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Posicione-se de frente para a câmera.',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
-          const Text(
-            'Iniciar reunião com rosto',
-            style: TextStyle(color: AppColors.text, fontWeight: FontWeight.bold, fontSize: 18),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Posicione-se de frente para a câmera.',
-            style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-            textAlign: TextAlign.center,
-          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
           const SizedBox(height: 16),
           if (_successName != null) ...[
             const Icon(Icons.check_circle, color: Color(0xFF1f9d55), size: 56),
@@ -187,9 +213,11 @@ class _FaceStartNowBodyState extends State<_FaceStartNowBody> {
                 style: const TextStyle(color: Colors.redAccent, fontSize: 13),
                 textAlign: TextAlign.center,
               ),
+            ],
           ],
-        ],
-      ),
+          ),
+        ),
+      ],
     );
   }
 }

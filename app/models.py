@@ -50,6 +50,12 @@ class Room(db.Model):
     business_hours_start = db.Column(db.Time, nullable=True)
     business_hours_end = db.Column(db.Time, nullable=True)
 
+    # Janela de horário em que o painel/tablet fica com a tela ligada.
+    # Fora desse intervalo, o app esmaece a tela (modo economia).
+    # None em qualquer um = sem esmaecimento automático por horário.
+    dim_start = db.Column(db.Time, nullable=True)
+    dim_end = db.Column(db.Time, nullable=True)
+
     bookings = db.relationship(
         "Booking", backref="room", lazy="dynamic", cascade="all, delete-orphan"
     )
@@ -73,6 +79,13 @@ class Room(db.Model):
         if not allowed:
             return True
         return bool(set(group_cns or []) & set(allowed))
+
+    def is_screen_dim_now(self):
+        """True quando a hora local está fora do intervalo dim_start–dim_end."""
+        if self.dim_start is None or self.dim_end is None:
+            return False
+        t = localnow().time()
+        return t < self.dim_start or t >= self.dim_end
 
     def is_within_business_hours(self, start_at, end_at):
         if self.business_hours_start is None or self.business_hours_end is None:

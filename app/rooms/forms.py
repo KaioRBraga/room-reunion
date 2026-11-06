@@ -56,8 +56,18 @@ class RoomForm(FlaskForm):
     business_hours_end = SelectField(
         "Horário comercial - fim", choices=half_hour_choices(), validators=[Optional()]
     )
+    dim_start = SelectField(
+        "Tela ativa - início", choices=half_hour_choices(), validators=[Optional()]
+    )
+    dim_end = SelectField(
+        "Tela ativa - fim", choices=half_hour_choices(), validators=[Optional()]
+    )
     is_active = BooleanField("Ativa", default=True)
 
     def validate_business_hours_end(self, field):
         if self.business_hours_start.data and field.data and field.data <= self.business_hours_start.data:
             raise ValidationError("O horário de fim deve ser depois do início.")
+
+    def validate_dim_end(self, field):
+        if self.dim_start.data and field.data and field.data <= self.dim_start.data:
+            raise ValidationError("O horário de fim da tela deve ser depois do início.")

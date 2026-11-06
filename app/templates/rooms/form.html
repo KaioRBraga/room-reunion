@@ -48,6 +48,21 @@
             {% endfor %}
         </div>
     </div>
+    <div class="row mb-3">
+        <div class="col">
+            {{ form.dim_start.label(class="form-label") }}
+            <small class="text-muted d-block mb-1">Painel ligado a partir de (fora desse intervalo a tela esmaece)</small>
+            {{ form.dim_start(class="form-select") }}
+        </div>
+        <div class="col">
+            {{ form.dim_end.label(class="form-label") }}
+            <small class="text-muted d-block mb-1">&nbsp;</small>
+            {{ form.dim_end(class="form-select") }}
+            {% for error in form.dim_end.errors %}
+            <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+        </div>
+    </div>
     <div class="form-check mb-3">
         {{ form.is_active(class="form-check-input") }}
         {{ form.is_active.label(class="form-check-label") }}

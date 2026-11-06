@@ -43,20 +43,24 @@ class _FaceScanOverlayState extends State<FaceScanOverlay> {
   }
 
   Future<void> _initCamera() async {
-    final cameras = await availableCameras();
-    // Prefere câmera frontal; cai para a primeira disponível se não houver.
-    final cam = cameras.firstWhere(
-      (c) => c.lensDirection == CameraLensDirection.front,
-      orElse: () => cameras.first,
-    );
-    final ctrl = CameraController(cam, ResolutionPreset.low, enableAudio: false);
-    await ctrl.initialize();
-    if (!mounted) {
-      await ctrl.dispose();
-      return;
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) return;
+      final cam = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
+      final ctrl = CameraController(cam, ResolutionPreset.low, enableAudio: false);
+      await ctrl.initialize();
+      if (!mounted) {
+        await ctrl.dispose();
+        return;
+      }
+      setState(() => _ctrl = ctrl);
+      _timer = Timer.periodic(_interval, (_) => _captureAndSend());
+    } catch (_) {
+      // Câmera indisponível ou permissão negada — overlay fica inativo silenciosamente.
     }
-    setState(() => _ctrl = ctrl);
-    _timer = Timer.periodic(_interval, (_) => _captureAndSend());
   }
 
   Future<void> _captureAndSend() async {
